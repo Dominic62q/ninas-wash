@@ -19,8 +19,9 @@ import {
   type SmsStatus,
   type SmsTemplateDto,
 } from '@niinas/shared';
+import { Plate } from '../components/Plate';
 import { useToast } from '../components/Toast';
-import { Check, EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, Strip, errorMessage } from '../components/ui';
+import { Check, EmptyRow, Field, FormError, Panel, SkeletonRows, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { newKey, plural, shortDate, shortDateTime } from '../lib/format';
@@ -41,17 +42,53 @@ const FILTERS: { value: SmsStatus | 'all'; label: string }[] = [
 
 const STEP = 30;
 
-function StatusPill({ status }: { status: SmsStatus }) {
-  if (status === 'sent') return <Pill tone="green">Sent</Pill>;
-  if (status === 'skipped') return <Pill tone="grey">Not sent</Pill>;
-  return <span className="inline-block whitespace-nowrap bg-red-50 px-2 py-0.5 text-xs font-bold text-red-d max-lg:rounded-md">Failed</span>;
+type Tone = 'green' | 'red' | 'amber' | 'grey';
+
+const MARK_TEXT: Record<Tone, string> = { green: 'text-green', red: 'text-red-d', amber: 'text-amber', grey: 'text-ink-3' };
+const MARK_DOT: Record<Tone, string> = { green: 'bg-green', red: 'bg-red', amber: 'bg-amber', grey: 'bg-ink-3' };
+
+/** A status as a small dot and a word, so a row of texts is not a row of coloured tags. */
+function Mark({ tone, children }: { tone: Tone; children: ReactNode }) {
+  return (
+    <span className={`inline-flex items-center gap-2 whitespace-nowrap text-xs font-medium ${MARK_TEXT[tone]}`}>
+      <span aria-hidden="true" className={`size-2 rounded-full ${MARK_DOT[tone]}`} />
+      {children}
+    </span>
+  );
 }
+
+function StatusMark({ status }: { status: SmsStatus }) {
+  if (status === 'sent') return <Mark tone="green">Sent</Mark>;
+  if (status === 'skipped') return <Mark tone="grey">Not sent</Mark>;
+  return <Mark tone="red">Failed</Mark>;
+}
+
+/** What the customer's phone shows: the words in a soft bubble. */
+const BUBBLE = 'rounded-[12px] rounded-bl-[4px] bg-band px-4 py-3 text-sm';
 
 function Notice({ tone, children }: { tone: 'red' | 'amber'; children: ReactNode }) {
   return (
-    <p role="status" className={`border-l-4 bg-surface px-3 py-2.5 text-sm font-semibold text-ink shadow-card max-lg:rounded-[10px] ${tone === 'red' ? 'border-red' : 'border-amber'}`}>
-      {children}
+    <p role="status" className="flex items-start gap-3 border border-line bg-surface px-4 py-3 text-sm text-ink max-lg:rounded-[12px]">
+      <span aria-hidden="true" className={`mt-1.5 size-2 shrink-0 rounded-full ${tone === 'red' ? 'bg-red' : 'bg-amber'}`} />
+      <span className="min-w-0">{children}</span>
     </p>
+  );
+}
+
+/** The four headline numbers in one ruled strip: value over label on a phone, label over value on a computer. */
+function Figures({ items }: { items: { label: string; short: string; value: string; tone?: 'amber' | 'red' }[] }) {
+  return (
+    <dl className="grid grid-cols-4 border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
+      {items.map((item, i) => (
+        <div key={item.label} className={`flex min-w-0 flex-col-reverse gap-1 px-2 py-3 max-lg:items-center max-lg:text-center lg:flex-col lg:px-4 lg:py-4 ${i > 0 ? 'border-l border-line' : ''}`}>
+          <dt className="text-[11px] leading-tight text-ink-3 lg:text-sm">
+            <span className="lg:hidden">{item.short}</span>
+            <span className="hidden lg:inline">{item.label}</span>
+          </dt>
+          <dd className={`num text-base font-semibold leading-tight lg:text-2xl ${item.tone === 'red' ? 'text-red-d' : item.tone === 'amber' ? 'text-amber' : 'text-navy'}`}>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -60,7 +97,7 @@ function Counter({ body }: { body: string }) {
   const segments = smsSegments(body);
   const bad = unsupportedChars(body);
   return (
-    <p className={`text-xs ${bad.length ? 'font-semibold text-red-d' : 'text-ink-3'}`}>
+    <p className={`text-xs ${bad.length ? 'font-medium text-red-d' : 'text-ink-3'}`}>
       {bad.length ? `Not allowed: ${bad.join(' ')}. Use plain letters and symbols.` : `${body.length} characters · ${plural(segments, 'text')} (${plural(segments, 'credit')} each time)`}
     </p>
   );
@@ -71,29 +108,42 @@ function Counter({ body }: { body: string }) {
 function MessageRow({ message, canResend, onResend, busy }: { message: SmsMessageDto; canResend: boolean; onResend: () => void; busy: boolean }) {
   const [open, setOpen] = useState(false);
   return (
-    <li className="px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 truncate font-bold text-ink">{message.customer?.name ?? formatPhone(message.phone)}</p>
-        <time dateTime={message.at} className="shrink-0 text-xs text-ink-3">
+    <li className="px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate font-medium text-ink">{message.customer?.name ?? formatPhone(message.phone)}</p>
+          {message.plate && <Plate plate={message.plate} size="sm" />}
+        </div>
+        <time dateTime={message.at} className="num shrink-0 text-xs text-ink-3">
           {shortDateTime(message.at)}
         </time>
       </div>
-      <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
-        <StatusPill status={message.status} />
-        <Pill tone="blue">{EVENT_LABEL[message.event]}</Pill>
-        {message.plate && <span className="num text-xs text-ink-3">{message.plate}</span>}
-        {message.segments > 1 && <span className="text-xs text-ink-3">{plural(message.segments, 'text')}</span>}
+      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+        <StatusMark status={message.status} />
+        <span aria-hidden="true">·</span>
+        <span>{EVENT_LABEL[message.event]}</span>
+        {message.segments > 1 && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span>{plural(message.segments, 'text')}</span>
+          </>
+        )}
       </p>
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className={`mt-1.5 block w-full cursor-pointer text-left text-sm text-ink-2 ${open ? '' : 'line-clamp-2'}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={`mt-2 block w-full max-w-[560px] cursor-pointer text-left text-ink-2 transition-colors hover:bg-line-2 ${BUBBLE} ${open ? '' : 'line-clamp-2'}`}
+      >
         {message.body}
       </button>
-      {message.error && <p className="mt-1 text-xs font-semibold text-red-d">{message.error}</p>}
-      <p className="mt-0.5 text-xs text-ink-3">
+      {message.error && <p className="mt-2 text-xs font-medium text-red-d">{message.error}</p>}
+      <p className="num mt-2 text-xs text-ink-3">
         {message.customer && message.customer.name !== formatPhone(message.phone) ? `${formatPhone(message.phone)} · ` : ''}
         {message.by ? `Sent by ${message.by}` : 'Automatic'}
       </p>
       {canResend && message.status !== 'sent' && message.customer && (
-        <button type="button" className="tap -mb-2 text-sm text-blue-d" disabled={busy} onClick={onResend}>
+        <button type="button" className="tap -mb-2 text-sm font-medium text-blue-d" disabled={busy} onClick={onResend}>
           {busy ? 'Sending…' : 'Send again'}
         </button>
       )}
@@ -127,7 +177,7 @@ function ActivityTab({ canSend }: { canSend: boolean }) {
 
   const data = list.data;
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
         <div role="radiogroup" aria-label="Show" className="flex gap-2 overflow-x-auto">
           {FILTERS.map((f) => (
@@ -137,14 +187,14 @@ function ActivityTab({ canSend }: { canSend: boolean }) {
               role="radio"
               aria-checked={filter === f.value}
               onClick={() => { setFilter(f.value); setLimit(STEP); }}
-              className={`btn h-9 shrink-0 px-3 text-sm ${filter === f.value ? 'border-blue bg-blue-50 text-blue-d' : ''}`}
+              className={`btn h-9 shrink-0 px-3 text-sm font-medium ${filter === f.value ? 'border-blue bg-blue-50 text-blue-d' : ''}`}
             >
               {f.label}
             </button>
           ))}
         </div>
         <input
-          className="input lg:ml-auto lg:max-w-[260px]"
+          className="input lg:ml-auto lg:h-9 lg:max-w-[260px] lg:text-sm"
           type="search"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setLimit(STEP); }}
@@ -171,11 +221,11 @@ function ActivityTab({ canSend }: { canSend: boolean }) {
       </section>
       {data && data.messages.length > 0 && (
         <div className="flex flex-col items-center gap-2">
-          <p className="text-center text-xs text-ink-3">
+          <p className="num text-center text-xs text-ink-3">
             Showing {data.messages.length} of {data.total}
           </p>
           {data.messages.length < data.total && (
-            <button type="button" className="btn" onClick={() => setLimit((l) => l + STEP)}>
+            <button type="button" className="btn font-medium" onClick={() => setLimit((l) => l + STEP)}>
               Show more
             </button>
           )}
@@ -230,12 +280,12 @@ function SendPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Panel open={open} onClose={onClose} title="Send a text" tall>
       {picked ? (
-        <div className="flex items-center gap-3 rounded-[10px] bg-band px-3.5 py-2.5">
+        <div className="flex items-center gap-3 rounded-[10px] bg-band px-4 py-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate font-bold text-ink">{picked.name}</p>
+            <p className="truncate font-medium text-ink">{picked.name}</p>
             <p className="num text-sm text-ink-3">{formatPhone(picked.phone)}</p>
           </div>
-          <button type="button" className="tap text-sm text-blue-d" onClick={() => setPicked(null)}>
+          <button type="button" className="tap text-sm font-medium text-blue-d" onClick={() => setPicked(null)}>
             Change
           </button>
         </div>
@@ -246,30 +296,36 @@ function SendPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
           </Field>
           <ul className="overflow-hidden rounded-[10px] border border-line">
             {customers.isPending ? (
-              <li className="px-3.5 py-3 text-sm text-ink-3">Loading…</li>
+              <li>
+                <SkeletonRows count={2} />
+              </li>
             ) : customers.data && customers.data.rows.length > 0 ? (
               customers.data.rows.map((c) => {
                 const why = reason(c);
                 return (
                   <li key={c.id} className="border-t border-line first:border-t-0">
-                    <button type="button" disabled={why !== null} onClick={() => { setPicked(c); setError(null); }} className="flex min-h-14 w-full items-center gap-3 px-3.5 py-2 text-left enabled:cursor-pointer enabled:active:bg-band disabled:opacity-60">
+                    <button
+                      type="button"
+                      disabled={why !== null}
+                      onClick={() => { setPicked(c); setError(null); }}
+                      className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left transition-colors enabled:cursor-pointer enabled:hover:bg-band enabled:active:bg-band disabled:opacity-60"
+                    >
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-semibold text-ink">{c.name}</span>
+                        <span className="block truncate font-medium text-ink">{c.name}</span>
                         <span className="num block text-xs text-ink-3">{why ?? formatPhone(c.phone)}</span>
                       </span>
-                      {why === null && <span aria-hidden="true" className="text-ink-3">›</span>}
                     </button>
                   </li>
                 );
               })
             ) : (
-              <li className="px-3.5 py-3 text-sm text-ink-3">No customers found.</li>
+              <li className="px-4 py-3 text-sm text-ink-3">No customers found</li>
             )}
           </ul>
         </div>
       )}
       <Field label="Message">
-        <textarea className="input h-auto min-h-[130px] resize-y py-2.5" rows={5} value={message} onChange={(e) => { setMessage(e.target.value); setError(null); }} maxLength={600} placeholder="Type your message" />
+        <textarea className="input h-auto min-h-[132px] resize-y py-3" rows={5} value={message} onChange={(e) => { setMessage(e.target.value); setError(null); }} maxLength={600} placeholder="Type your message" />
       </Field>
       <Counter body={message} />
       <FormError message={error ?? (send.isError ? errorMessage(send.error) : null)} />
@@ -332,22 +388,22 @@ function TemplatePanel({ template, onClose }: { template: SmsTemplateDto | null;
           <p className="text-sm text-ink-2">{template.when}</p>
           <Check label="Send this text automatically" hint="Only customers with a phone number who agreed to texts get it." checked={enabled} onChange={setEnabled} />
           <Field label="Message">
-            <textarea ref={area} className="input h-auto min-h-[120px] resize-y py-2.5" rows={5} value={body} onChange={(e) => { setBody(e.target.value); setError(null); }} maxLength={600} aria-invalid={!!error} />
+            <textarea ref={area} className="input h-auto min-h-[120px] resize-y py-3" rows={5} value={body} onChange={(e) => { setBody(e.target.value); setError(null); }} maxLength={600} aria-invalid={!!error} />
           </Field>
           <Counter body={body} />
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-bold text-ink-2">Tap to add</span>
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-ink-2">Tap to add</span>
             <div className="flex flex-wrap gap-2">
               {template.placeholders.map((p) => (
-                <button key={p} type="button" onClick={() => insert(p)} className="btn h-9 px-3 text-sm">
+                <button key={p} type="button" onClick={() => insert(p)} className="btn h-9 px-3 text-sm font-medium">
                   {`{${p}}`}
                 </button>
               ))}
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-bold text-ink-2">What the customer sees</span>
-            <p className="whitespace-pre-wrap rounded-[14px] rounded-bl-[4px] bg-band px-3.5 py-2.5 text-sm text-ink">{renderTemplate(body, SAMPLE_VALUES) || '…'}</p>
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-ink-2">What the customer sees</span>
+            <p className={`whitespace-pre-wrap text-ink ${BUBBLE}`}>{renderTemplate(body, SAMPLE_VALUES) || '…'}</p>
           </div>
           <FormError message={error ?? (save.isError ? errorMessage(save.error) : reset.isError ? errorMessage(reset.error) : null)} />
           <div className="mt-auto flex flex-col gap-2">
@@ -355,7 +411,7 @@ function TemplatePanel({ template, onClose }: { template: SmsTemplateDto | null;
               {save.isPending ? 'Saving…' : 'Save'}
             </button>
             {!template.isDefault && (
-              <button type="button" className="btn" disabled={busy} onClick={() => reset.mutate()}>
+              <button type="button" className="btn font-medium" disabled={busy} onClick={() => reset.mutate()}>
                 {reset.isPending ? 'Resetting…' : 'Use the standard wording'}
               </button>
             )}
@@ -368,28 +424,28 @@ function TemplatePanel({ template, onClose }: { template: SmsTemplateDto | null;
 
 function WordingTab({ templates, canManage, onEdit }: { templates: SmsTemplateDto[]; canManage: boolean; onEdit: (t: SmsTemplateDto) => void }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-2">These go out by themselves. {canManage ? 'Tap one to change the words or switch it off.' : 'Only the owner can change them.'}</p>
       <ul className="divide-y divide-line border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
         {templates.map((t) => {
           const inner = (
             <>
               <span className="flex items-center justify-between gap-3">
-                <span className="font-bold text-ink">{t.label}</span>
-                <Pill tone={t.enabled ? 'green' : 'grey'}>{t.enabled ? 'On' : 'Off'}</Pill>
+                <span className="font-medium text-ink">{t.label}</span>
+                <Mark tone={t.enabled ? 'green' : 'grey'}>{t.enabled ? 'On' : 'Off'}</Mark>
               </span>
-              <span className="mt-0.5 block text-xs text-ink-3">{t.when}</span>
-              <span className={`mt-1.5 block text-sm ${t.enabled ? 'text-ink-2' : 'text-ink-3'}`}>{renderTemplate(t.body, SAMPLE_VALUES)}</span>
+              <span className="mt-1 block text-xs text-ink-3">{t.when}</span>
+              <span className={`mt-3 block max-w-[560px] ${BUBBLE} ${t.enabled ? 'text-ink-2' : 'text-ink-3'}`}>{renderTemplate(t.body, SAMPLE_VALUES)}</span>
             </>
           );
           return (
             <li key={t.event}>
               {canManage ? (
-                <button type="button" onClick={() => onEdit(t)} className="block w-full cursor-pointer px-4 py-3 text-left active:bg-band">
+                <button type="button" onClick={() => onEdit(t)} className="block w-full cursor-pointer px-4 py-4 text-left transition-colors hover:bg-band active:bg-band">
                   {inner}
                 </button>
               ) : (
-                <div className="px-4 py-3">{inner}</div>
+                <div className="px-4 py-4">{inner}</div>
               )}
             </li>
           );
@@ -431,7 +487,7 @@ function CreditPanel({ mode, balance, onClose }: { mode: 'topup' | 'set' | null;
       <p className="text-sm text-ink-2">
         {mode === 'topup'
           ? 'After you buy credits on the Nalo portal, write down how many here so the balance stays right.'
-          : `Open the Nalo portal, read the balance it shows, and type it here. We think there are about ${balance} now; the difference is written down as a correction.`}
+          : `Open the Nalo portal, read the balance it shows, and type it here. We think there are about ${Math.max(balance, 0)} now; the difference is written down as a correction.`}
       </p>
       <Field label={mode === 'topup' ? 'Credits bought' : 'Balance on Nalo'} error={error ?? undefined}>
         <input className="input" inputMode="numeric" value={value} onChange={(e) => { setValue(e.target.value); setError(null); }} autoComplete="off" aria-invalid={!!error} placeholder="500" />
@@ -451,16 +507,14 @@ function CreditPanel({ mode, balance, onClose }: { mode: 'topup' | 'set' | null;
 
 function EntryRow({ entry }: { entry: SmsCreditEntryDto }) {
   return (
-    <li className="flex items-start gap-3 px-4 py-2.5">
+    <li className="flex items-start gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className="font-bold text-ink">{entry.kind === 'topup' ? 'Credits bought' : 'Correction'}</p>
-        <p className="truncate text-xs text-ink-3">
-          {[entry.note, `${entry.by}, ${shortDate(entry.at)}`].filter(Boolean).join(' · ')}
-        </p>
+        <p className="font-medium text-ink">{entry.kind === 'topup' ? 'Credits bought' : 'Correction'}</p>
+        <p className="truncate text-xs text-ink-3">{[entry.note, `${entry.by}, ${shortDate(entry.at)}`].filter(Boolean).join(' · ')}</p>
       </div>
-      <p className={`num font-bold ${entry.credits < 0 ? 'text-red-d' : 'text-ink'}`}>
-        {entry.credits > 0 ? '+' : ''}
-        {entry.credits}
+      <p className={`num font-medium ${entry.credits < 0 ? 'text-red-d' : 'text-ink'}`}>
+        {entry.credits < 0 ? '−' : '+'}
+        {Math.abs(entry.credits)}
       </p>
     </li>
   );
@@ -468,26 +522,41 @@ function EntryRow({ entry }: { entry: SmsCreditEntryDto }) {
 
 function CreditsTab({ data, canManage, onRecord }: { data: SmsOverview; canManage: boolean; onRecord: (mode: 'topup' | 'set') => void }) {
   const { credits, gateway } = data;
+  const isSet = credits.bought > 0;
+  const share = isSet ? Math.min(100, Math.round((credits.used / credits.bought) * 100)) : 0;
+  const fill = credits.outOfCredit ? 'bg-red' : credits.low ? 'bg-amber' : 'bg-blue';
   return (
-    <div className="flex flex-col gap-3">
-      <section aria-label="Credit balance" className="flex flex-col gap-3 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
-        <div>
-          <p className="text-[13px] font-bold text-ink-3">Credits left (estimate)</p>
-          <p className={`display num text-[40px] leading-tight ${credits.balance <= 0 ? 'text-red-d' : 'text-navy'}`}>{credits.balance}</p>
-          <p className="text-sm text-ink-3">
-            {credits.bought} recorded, {credits.used} used. One credit is one text of up to 160 characters. Nalo does not tell us the exact figure, so check its portal now and then.
-          </p>
+    <div className="flex flex-col gap-4">
+      <section aria-label="Credit balance" className="flex flex-col gap-4 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card lg:p-6">
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-ink-3">Credits left, estimated</p>
+          <p className={`num text-[40px] font-semibold leading-none ${!isSet ? 'text-ink-3' : credits.balance <= 0 ? 'text-red-d' : 'text-navy'}`}>{isSet ? Math.max(credits.balance, 0) : 'Not set'}</p>
+          {isSet ? (
+            <>
+              <div role="img" aria-label={`${share}% of recorded credits used`} className="mt-2 h-2 overflow-hidden rounded-full bg-band">
+                <div className={`h-full rounded-full ${fill}`} style={{ width: `${share}%` }} />
+              </div>
+              <p className="num text-sm text-ink-3">
+                {credits.used} used of {credits.bought} recorded
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-ink-3">
+              {canManage ? 'Copy the balance from the Nalo portal with Match Nalo’s balance.' : 'The owner has not entered the balance from Nalo yet.'} {credits.used > 0 ? `${credits.used} used so far.` : ''}
+            </p>
+          )}
+          <p className="text-xs text-ink-3">One credit is one text of up to 160 characters. Nalo does not tell us the exact figure, so check its portal now and then.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <a className="btn btn-primary no-underline" href={gateway.topUpUrl} target="_blank" rel="noopener noreferrer">
-            Top up on Nalo ↗
+            Top up on Nalo<span className="sr-only"> (opens in a new tab)</span>
           </a>
           {canManage && (
             <>
-              <button type="button" className="btn" onClick={() => onRecord('topup')}>
+              <button type="button" className="btn font-medium" onClick={() => onRecord('topup')}>
                 Record credits bought
               </button>
-              <button type="button" className="btn" onClick={() => onRecord('set')}>
+              <button type="button" className="btn font-medium" onClick={() => onRecord('set')}>
                 Match Nalo&apos;s balance
               </button>
             </>
@@ -496,18 +565,18 @@ function CreditsTab({ data, canManage, onRecord }: { data: SmsOverview; canManag
       </section>
 
       <dl className="grid grid-cols-2 border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
-        <div className="px-4 py-2.5">
-          <dt className="text-[13px] font-bold text-ink-3">Texts come from</dt>
-          <dd className="font-bold text-ink">{gateway.senderId}</dd>
+        <div className="px-4 py-3">
+          <dt className="text-sm text-ink-3">Texts come from</dt>
+          <dd className="font-medium text-ink">{gateway.senderId}</dd>
         </div>
-        <div className="px-4 py-2.5">
-          <dt className="text-[13px] font-bold text-ink-3">Nalo connection</dt>
-          <dd className="font-bold text-ink">{gateway.configured ? 'Set up' : 'Not set up'}</dd>
+        <div className="px-4 py-3">
+          <dt className="text-sm text-ink-3">Nalo connection</dt>
+          <dd className="font-medium text-ink">{gateway.configured ? 'Set up' : 'Not set up'}</dd>
         </div>
       </dl>
 
       <section aria-label="Credit history" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
-        <h3 className="border-b border-line px-4 py-2.5 text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Credit history</h3>
+        <h3 className="border-b border-line px-4 py-3 text-sm font-medium text-ink-2">Credit history</h3>
         {credits.entries.length > 0 ? (
           <ul className="divide-y divide-line">
             {credits.entries.map((e) => (
@@ -540,11 +609,13 @@ export function Texts() {
     placeholderData: (previous) => previous,
   });
   const data = overview.data;
+  const creditsKnown = (data?.credits.bought ?? 0) > 0;
+  const creditsTone = data?.credits.outOfCredit ? 'red' : data && (!creditsKnown || data.credits.low) ? 'amber' : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="display text-2xl text-navy max-lg:sr-only">Customer texts</h2>
+        <p className="min-w-0 text-sm text-ink-2 max-lg:sr-only">The texts customers get when their car is booked, ready and paid for</p>
         {canSend && (
           <button type="button" className="btn btn-primary ml-auto shrink-0 px-4" onClick={() => setSending(true)}>
             Send a text
@@ -558,17 +629,28 @@ export function Texts() {
         <Notice tone="amber">Texting is not switched on yet. Texts are written down here but not sent until the Nalo details are added to the server settings.</Notice>
       )}
       {data?.credits.outOfCredit && <Notice tone="red">Nalo says there are no credits left, so texts are failing. Top up, then record it under Credits.</Notice>}
-      {data && !data.credits.outOfCredit && data.credits.low && data.gateway.configured && (
-        <Notice tone="amber">Credits are running low: about {Math.max(data.credits.balance, 0)} left.</Notice>
+      {data && data.gateway.configured && !data.credits.outOfCredit && !creditsKnown && (
+        <Notice tone="amber">
+          The credit balance is not set, so there is no low-credit warning.{' '}
+          {canManage ? (
+            <button type="button" className="cursor-pointer font-medium text-blue-d underline underline-offset-2" onClick={() => setTab('credits')}>
+              Set it under Credits
+            </button>
+          ) : (
+            'Ask the owner to set it under Credits.'
+          )}
+        </Notice>
+      )}
+      {data && data.gateway.configured && !data.credits.outOfCredit && creditsKnown && data.credits.low && (
+        <Notice tone="amber">Credits are running low, about {Math.max(data.credits.balance, 0)} left</Notice>
       )}
 
-      <Strip
-        compact
+      <Figures
         items={[
-          { label: 'Credits left', short: 'Credits', value: data ? String(data.credits.balance) : '—' },
-          { label: 'Sent, 30 days', short: 'Sent', value: String(data?.last30.sent ?? 0) },
-          { label: 'Failed, 30 days', short: 'Failed', value: String(data?.last30.failed ?? 0) },
-          { label: 'Not sent, 30 days', short: 'Not sent', value: String(data?.last30.skipped ?? 0) },
+          { label: 'Credits left', short: 'Credits', value: data ? (creditsKnown ? String(Math.max(data.credits.balance, 0)) : 'Not set') : '—', ...(creditsTone ? { tone: creditsTone } : {}) },
+          { label: 'Sent, last 30 days', short: 'Sent', value: String(data?.last30.sent ?? 0) },
+          { label: 'Failed, last 30 days', short: 'Failed', value: String(data?.last30.failed ?? 0), ...((data?.last30.failed ?? 0) > 0 ? { tone: 'red' as const } : {}) },
+          { label: 'Not sent, last 30 days', short: 'Not sent', value: String(data?.last30.skipped ?? 0) },
         ]}
       />
 
@@ -593,7 +675,7 @@ export function Texts() {
                 setTab(next.value);
                 document.getElementById(`texts-tab-${next.value}`)?.focus();
               }}
-              className={`-mb-px flex-1 cursor-pointer whitespace-nowrap border-b-[3px] px-0.5 py-2.5 text-[13px] font-bold lg:px-3.5 lg:text-sm ${on ? 'border-blue text-blue-d' : 'border-transparent text-ink-3 hover:text-ink'}`}
+              className={`-mb-px flex-1 cursor-pointer whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors ${on ? 'border-blue text-blue-d' : 'border-transparent text-ink-3 hover:text-ink'}`}
             >
               {t.label}
             </button>
