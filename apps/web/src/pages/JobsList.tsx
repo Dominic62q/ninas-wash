@@ -4,8 +4,9 @@ import { Link, useSearchParams } from 'react-router';
 import { formatGHS, JOB_STATUSES, type JobListResult, type JobListRow } from '@niinas/shared';
 import { Select } from '../components/Dropdown';
 import { Plate } from '../components/Plate';
-import { STATUS_LABEL, StatusPill } from '../components/JobBits';
-import { EmptyRow, FormError, Pill, SkeletonRows, errorMessage } from '../components/ui';
+import { STATUS_LABEL } from '../components/JobBits';
+import { Mark, type MarkTone } from '../components/Mark';
+import { EmptyRow, FormError, SkeletonRows, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { addDays, clock, plural, ymd } from '../lib/format';
 
@@ -55,25 +56,28 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
 }
 
-const COLS = 'lg:grid-cols-[64px_150px_minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1fr)_170px_96px]';
+/** Attendants only get a column on a wide screen; on a narrower one the other columns keep their room. */
+const COLS = 'lg:grid-cols-[48px_132px_minmax(0,1fr)_minmax(0,1fr)_148px_88px] xl:grid-cols-[56px_140px_minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1fr)_176px_96px]';
 
 /** Only finished jobs can owe: a car still being washed has simply not been paid for yet. */
 const owed = (row: JobListRow) => (!row.voided && (row.status === 'completed' || row.status === 'dispatched') && row.paid < row.total ? row.total - row.paid : 0);
 
+const STATUS_TONE: Record<JobListRow['status'], MarkTone> = { pending: 'amber', in_progress: 'blue', completed: 'green', dispatched: 'grey' };
+
 /** `short` leaves the "Owes" amount out; the phone row shows it on its own line instead. */
 function RowStatus({ row, short }: { row: JobListRow; short?: boolean }) {
-  if (row.voided) return <Pill tone="grey">Voided</Pill>;
+  if (row.voided) return <Mark tone="grey">Voided</Mark>;
   const owes = owed(row);
   return (
-    <span className="inline-flex items-center gap-1">
-      <StatusPill status={row.status} />
-      {owes > 0 && !short && <Pill tone="amber">Owes {formatGHS(owes)}</Pill>}
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+      <Mark tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Mark>
+      {owes > 0 && !short && <span className="num text-xs font-medium text-amber">Owes {formatGHS(owes)}</span>}
     </span>
   );
 }
 
 function People({ row }: { row: JobListRow }) {
-  if (row.needsAttendant) return <span className="font-bold text-amber">{row.attendants.length ? `${row.attendants.join(', ')} · needs attendant` : 'No attendant'}</span>;
+  if (row.needsAttendant) return <span className="font-medium text-amber">{row.attendants.length ? `${row.attendants.join(', ')} · needs attendant` : 'No attendant'}</span>;
   return <>{row.attendants.join(', ') || '—'}</>;
 }
 
@@ -81,20 +85,20 @@ function ListRow({ row }: { row: JobListRow }) {
   const who = [row.makeModel, row.customerName].filter(Boolean).join(' · ') || 'Walk-in';
   return (
     <li className="border-b border-line-2 last:border-b-0">
-      <Link to={`/jobs/${row.id}`} className={`grid grid-cols-[minmax(0,1fr)] gap-x-4 px-4 py-2.5 text-ink no-underline hover:bg-band lg:items-center ${COLS}`}>
+      <Link to={`/jobs/${row.id}`} className={`grid grid-cols-[minmax(0,1fr)] gap-x-4 px-4 py-3 text-ink no-underline transition-colors hover:bg-band lg:items-center ${COLS}`}>
         {/* Phone: three short lines, one kind of thing on each. The customer and car are on the job itself. */}
         <div className="min-w-0 lg:hidden">
           <div className="flex items-center gap-2">
             <Plate plate={row.plate} size="sm" />
             <RowStatus row={row} short />
-            <span className="num ml-auto shrink-0 font-bold">{formatGHS(row.total)}</span>
+            <span className="num ml-auto shrink-0 font-semibold">{formatGHS(row.total)}</span>
           </div>
-          <p className="mt-1 truncate text-sm font-semibold text-ink">{row.services.join(', ')}</p>
+          <p className="mt-1 truncate text-sm font-medium text-ink">{row.services.join(', ')}</p>
           <p className="mt-0.5 flex items-baseline gap-2 text-xs text-ink-3">
             <span className="min-w-0 flex-1 truncate">
               <span className="num">{clock(row.createdAt)}</span> · <People row={row} />
             </span>
-            {owed(row) > 0 && <span className="num shrink-0 font-bold text-amber">Owes {formatGHS(owed(row))}</span>}
+            {owed(row) > 0 && <span className="num shrink-0 font-medium text-amber">Owes {formatGHS(owed(row))}</span>}
           </p>
         </div>
         {/* Computer: one line per column. */}
@@ -103,14 +107,14 @@ function ListRow({ row }: { row: JobListRow }) {
           <Plate plate={row.plate} size="sm" />
         </span>
         <span className="hidden truncate text-sm text-ink-2 lg:block">{who}</span>
-        <span className="hidden truncate text-sm font-semibold lg:block">{row.services.join(', ')}</span>
-        <span className="hidden truncate text-sm text-ink-3 lg:block">
+        <span className="hidden truncate text-sm font-medium lg:block">{row.services.join(', ')}</span>
+        <span className="hidden truncate text-sm text-ink-3 xl:block">
           <People row={row} />
         </span>
         <span className="hidden lg:block">
           <RowStatus row={row} />
         </span>
-        <span className="num hidden text-right font-bold lg:block">{formatGHS(row.total)}</span>
+        <span className="num hidden text-right font-semibold lg:block">{formatGHS(row.total)}</span>
       </Link>
     </li>
   );
@@ -171,7 +175,7 @@ export function JobsList({ search }: { search: string }) {
             role="radio"
             aria-checked={range === r.value}
             onClick={() => set({ range: r.value === 'week' ? null : r.value, ...(r.value === 'custom' ? {} : { from: null, to: null }) })}
-            className={`btn h-9 shrink-0 px-3 text-sm lg:h-10 lg:px-3.5 ${range === r.value ? 'border-blue bg-blue-50 text-blue-d' : ''}`}
+            className={`btn h-9 shrink-0 px-3 text-sm font-medium lg:h-10 ${range === r.value ? 'border-blue bg-blue-50 text-blue-d' : ''}`}
           >
             {r.label}
           </button>
@@ -180,12 +184,12 @@ export function JobsList({ search }: { search: string }) {
 
       {range === 'custom' && (
         <div className="grid grid-cols-2 gap-3 lg:max-w-[420px]">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-bold text-ink-2">From</span>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-ink-2">From</span>
             <input className="input" type="date" value={from} max={ymd(new Date())} onChange={(e) => set({ from: e.target.value })} />
           </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-bold text-ink-2">To</span>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-ink-2">To</span>
             <input className="input" type="date" value={to} max={ymd(new Date())} onChange={(e) => set({ to: e.target.value })} />
           </label>
         </div>
@@ -198,7 +202,7 @@ export function JobsList({ search }: { search: string }) {
         <p className="num ml-auto text-right text-sm text-ink-2" aria-live="polite">
           {query.data ? (
             <>
-              <strong className="text-ink">{plural(total, 'job')}</strong>
+              <span className="font-medium text-ink">{plural(total, 'job')}</span>
               {status !== 'voided' && total > 0 && <> · {formatGHS(query.data.sum)}</>}
             </>
           ) : null}
@@ -215,15 +219,15 @@ export function JobsList({ search }: { search: string }) {
         !backwards && (
           <div className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
             {rows.length === 0 ? (
-              <EmptyRow>{search ? 'Nothing matches.' : 'No jobs in this period.'}</EmptyRow>
+              <EmptyRow>{search ? 'Nothing matches' : 'No jobs in this period'}</EmptyRow>
             ) : (
               <>
-                <div className={`hidden gap-x-4 border-b border-line bg-band px-4 py-2 text-xs font-bold uppercase tracking-[0.06em] text-ink-3 lg:grid ${COLS}`} aria-hidden="true">
+                <div className={`hidden gap-x-4 border-b border-line bg-band px-4 py-2 text-xs font-medium text-ink-3 lg:grid ${COLS}`} aria-hidden="true">
                   <span>Time</span>
                   <span>Plate</span>
                   <span>Customer</span>
                   <span>Services</span>
-                  <span>Attendants</span>
+                  <span className="max-xl:hidden">Attendants</span>
                   <span>Status</span>
                   <span className="text-right">Total</span>
                 </div>
@@ -231,7 +235,7 @@ export function JobsList({ search }: { search: string }) {
                   {rows.map((row, i) => (
                     <Fragment key={row.id}>
                       {(i === 0 || dayLabel(rows[i - 1]!.createdAt) !== dayLabel(row.createdAt)) && (
-                        <li className="border-b border-line bg-band px-4 py-1.5 text-xs font-bold uppercase tracking-[0.06em] text-ink-2" aria-hidden="true">
+                        <li className="border-b border-line bg-band px-4 py-2 text-xs font-medium text-ink-2" aria-hidden="true">
                           {dayLabel(row.createdAt)}
                         </li>
                       )}
@@ -247,7 +251,7 @@ export function JobsList({ search }: { search: string }) {
 
       {rows.length > 0 && rows.length < total && (
         <button type="button" className="btn self-center px-6" disabled={query.isFetching} onClick={() => setLimit((n) => n + PAGE)}>
-          {query.isFetching ? 'Loading…' : `Show more (${rows.length} of ${total})`}
+          {query.isFetching ? 'Loading' : `Show more (${rows.length} of ${total})`}
         </button>
       )}
     </>

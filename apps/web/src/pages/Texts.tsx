@@ -19,6 +19,7 @@ import {
   type SmsStatus,
   type SmsTemplateDto,
 } from '@niinas/shared';
+import { Mark } from '../components/Mark';
 import { Plate } from '../components/Plate';
 import { useToast } from '../components/Toast';
 import { Check, EmptyRow, Field, FormError, Panel, SkeletonRows, errorMessage } from '../components/ui';
@@ -41,21 +42,6 @@ const FILTERS: { value: SmsStatus | 'all'; label: string }[] = [
 ];
 
 const STEP = 30;
-
-type Tone = 'green' | 'red' | 'amber' | 'grey';
-
-const MARK_TEXT: Record<Tone, string> = { green: 'text-green', red: 'text-red-d', amber: 'text-amber', grey: 'text-ink-3' };
-const MARK_DOT: Record<Tone, string> = { green: 'bg-green', red: 'bg-red', amber: 'bg-amber', grey: 'bg-ink-3' };
-
-/** A status as a small dot and a word, so a row of texts is not a row of coloured tags. */
-function Mark({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return (
-    <span className={`inline-flex items-center gap-2 whitespace-nowrap text-xs font-medium ${MARK_TEXT[tone]}`}>
-      <span aria-hidden="true" className={`size-2 rounded-full ${MARK_DOT[tone]}`} />
-      {children}
-    </span>
-  );
-}
 
 function StatusMark({ status }: { status: SmsStatus }) {
   if (status === 'sent') return <Mark tone="green">Sent</Mark>;

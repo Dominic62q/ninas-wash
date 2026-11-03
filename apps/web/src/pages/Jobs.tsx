@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { CAR_TYPES, formatGHS, type JobCard, type JobStatus } from '@niinas/shared';
+import { Mark } from '../components/Mark';
 import { Plate } from '../components/Plate';
 import { STATUS_LABEL } from '../components/JobBits';
 import { useJobSteps, type JobStep } from '../components/JobActions';
-import { PayPill } from '../components/PaymentBits';
-import { EmptyRow, FormError, errorMessage } from '../components/ui';
+import { FormError, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { addDays, clock, shortDate, ymd } from '../lib/format';
@@ -15,7 +15,7 @@ import { JobsList } from './JobsList';
 const COLUMNS = ['pending', 'in_progress', 'completed'] as const;
 type Column = (typeof COLUMNS)[number];
 
-const EMPTY: Record<Column, string> = { pending: 'No cars waiting.', in_progress: 'No cars being washed.', completed: 'Nothing finished yet.' };
+const EMPTY: Record<Column, string> = { pending: 'No cars waiting', in_progress: 'No cars being washed', completed: 'Nothing finished yet' };
 
 const CAR_LABEL: Record<(typeof CAR_TYPES)[number], string> = { saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup', van: 'Van', other: 'Other' };
 
@@ -50,6 +50,16 @@ function since(job: JobCard): string {
   return `${verb} ${today ? clock(at) : `${shortDate(at)}, ${clock(at)}`}`;
 }
 
+function PayMark({ total, paid }: { total: number; paid: number }) {
+  if (total <= 0) return null;
+  if (paid >= total) return <Mark tone="green">Paid</Mark>;
+  return paid > 0 ? <Mark tone="blue">Part paid</Mark> : <Mark tone="amber">Unpaid</Mark>;
+}
+
+/** The slim phone button, and on a computer a compact outline one, so blue stays for New job and the selected states. */
+const ACT = 'w-[84px] px-2 font-medium lg:h-9 lg:w-auto lg:px-4';
+const QUIET = 'lg:border-line-strong lg:bg-surface lg:text-blue-d lg:hover:border-blue lg:hover:bg-blue-50';
+
 function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep, id: number, plate: string) => void; now: number; index: number }) {
   const detail = `/jobs/${job.id}`;
   const minutes = job.status === 'in_progress' && job.startedAt ? Math.max(0, Math.floor((now - new Date(job.startedAt).getTime()) / 60_000)) : null;
@@ -58,36 +68,31 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
   const { can } = useAuth();
   return (
     <li
-      className="rise border border-line bg-surface transition-shadow hover:shadow-[0_4px_14px_rgba(11,42,91,0.10)] max-lg:flex max-lg:items-center max-lg:gap-2 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card"
+      className="rise border border-line bg-surface transition-colors hover:border-line-strong max-lg:flex max-lg:items-center max-lg:gap-2 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card"
       style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
     >
-      <Link to={detail} className="block min-w-0 flex-1 px-3 py-2.5 text-ink no-underline lg:px-4 lg:pb-2 lg:pt-3.5">
-        <div className="flex items-center gap-2.5 lg:items-start lg:gap-3">
-          <p className="lg:flex-1">
+      <Link to={detail} className="block min-w-0 flex-1 px-3 py-3 text-ink no-underline lg:px-4 lg:pb-3 lg:pt-4">
+        <div className="flex items-center gap-3 lg:flex-wrap lg:items-baseline lg:gap-x-3 lg:gap-y-1">
+          <p>
             <Plate plate={job.plate} />
           </p>
-          {(job.status === 'completed' || job.paid > 0) && (
-            <span className="max-lg:hidden">
-              <PayPill total={job.total} paid={job.paid} />
-            </span>
-          )}
-          <p className="num font-bold text-ink max-lg:text-sm lg:text-lg">{formatGHS(job.total)}</p>
+          <p className="num font-semibold text-ink max-lg:text-sm lg:ml-auto lg:text-base">{formatGHS(job.total)}</p>
         </div>
-        <p className="hidden text-sm text-ink-2 lg:block">{[car, job.customerName].filter(Boolean).join(' · ') || 'Walk-in'}</p>
-        <p className="mt-1 truncate text-sm font-semibold text-ink lg:mt-1.5 lg:whitespace-normal">{job.services.join(', ')}</p>
-        <p className="mt-0.5 text-xs text-ink-3 max-lg:truncate lg:text-sm">
-          <span className={job.needsAttendant ? 'font-bold text-amber' : ''}>
+        <p className="hidden text-sm text-ink-2 lg:mt-2 lg:block">{[car, job.customerName].filter(Boolean).join(' · ') || 'Walk-in'}</p>
+        <p className="mt-1 truncate text-sm font-medium text-ink lg:whitespace-normal">{job.services.join(', ')}</p>
+        <p className="mt-1 text-xs text-ink-3 max-lg:truncate lg:mt-2">
+          <span className={job.needsAttendant ? 'font-medium text-amber' : ''}>
             {job.needsAttendant
               ? job.attendants.length > 0
                 ? `${job.attendants.join(', ')} · needs attendant`
                 : 'No attendant'
               : job.attendants.join(', ')}
           </span>
-          <span className="lg:mt-1 lg:block lg:text-xs">
+          <span className="lg:mt-1 lg:block">
             <span className="lg:hidden">{job.attendants.length > 0 || job.needsAttendant ? ' · ' : ''}</span>
             {since(job)}
             {minutes !== null && (
-              <span className={long ? 'ml-1.5 font-bold text-amber' : 'ml-1.5'}>
+              <span className={long ? 'num ml-2 font-medium text-amber' : 'num ml-2'}>
                 · {minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`}
                 {long && ' · running long'}
               </span>
@@ -95,21 +100,22 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
           </span>
         </p>
       </Link>
-      {/* On a phone the action is a slim fixed-width button so the car's details keep the room; labels shrink to one word. */}
-      <div className="flex shrink-0 gap-2 pr-3 lg:px-4 lg:pb-3.5 lg:pr-4">
+      {/* On a phone the action is a slim fixed-width button so the car's details keep the room; labels shrink to one word. On a computer it is a footer under the details. */}
+      <div className="flex shrink-0 gap-2 pr-3 lg:items-center lg:justify-between lg:border-t lg:border-line-2 lg:px-4 lg:py-3">
+        <span className="max-lg:hidden">{(job.status === 'completed' || job.paid > 0) && <PayMark total={job.total} paid={job.paid} />}</span>
         {job.status === 'pending' &&
           (job.needsAttendant ? (
-            <Link to={detail} className="btn w-[84px] px-2 no-underline lg:h-11 lg:min-w-[112px] lg:flex-1 lg:px-3">
+            <Link to={detail} className={`btn no-underline ${ACT}`}>
               Assign
             </Link>
           ) : (
-            <button type="button" className="btn btn-primary w-[84px] px-2 lg:h-11 lg:min-w-[112px] lg:flex-1 lg:px-3" onClick={() => onAsk('start', job.id, job.plate)}>
+            <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('start', job.id, job.plate)}>
               <span className="lg:hidden">Start</span>
               <span className="max-lg:hidden">Start wash</span>
             </button>
           ))}
         {job.status === 'in_progress' && (
-          <button type="button" className="btn btn-primary w-[84px] whitespace-nowrap px-2 lg:h-11 lg:min-w-[112px] lg:flex-1 lg:px-3" onClick={() => onAsk('complete', job.id, job.plate)}>
+          <button type="button" className={`btn btn-primary whitespace-nowrap ${ACT} ${QUIET}`} onClick={() => onAsk('complete', job.id, job.plate)}>
             <span className="lg:hidden">Done</span>
             <span className="max-lg:hidden">Mark complete</span>
           </button>
@@ -117,24 +123,30 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
         {job.status === 'completed' &&
           (job.total > job.paid ? (
             can('payment.record') ? (
-              <Link to={`${detail}?pay=1`} className="btn btn-primary w-[84px] whitespace-nowrap px-2 no-underline lg:h-11 lg:min-w-[112px] lg:flex-1 lg:px-3">
+              <Link to={`${detail}?pay=1`} className={`btn btn-primary whitespace-nowrap no-underline ${ACT} ${QUIET}`}>
                 <span className="lg:hidden">Pay</span>
                 <span className="max-lg:hidden">Take payment</span>
               </Link>
             ) : (
-              <p className="w-[84px] py-2 text-center text-sm font-semibold text-amber lg:min-w-[112px] lg:text-left">Owes</p>
+              <p className="w-[84px] py-2 text-center text-sm font-medium text-amber lg:w-auto lg:py-0">Owes</p>
             )
           ) : can('job.dispatch') ? (
-            <button type="button" className="btn btn-primary w-[84px] px-2 lg:h-11 lg:min-w-[112px] lg:flex-1 lg:px-3" onClick={() => onAsk('dispatch', job.id, job.plate)}>
+            <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('dispatch', job.id, job.plate)}>
               Dispatch
             </button>
           ) : (
-            <p className="w-[84px] py-2 text-center text-sm font-semibold text-green lg:min-w-[112px] lg:text-left">Ready</p>
+            <p className="w-[84px] py-2 text-center text-sm font-medium text-green lg:w-auto lg:py-0">Ready</p>
           ))}
       </div>
     </li>
   );
 }
+
+const CHEVRON = (flip: boolean) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={flip ? 'rotate-180' : ''}>
+    <path d="m15 5-7 7 7 7" />
+  </svg>
+);
 
 /** Step through days with the arrows, or tap the date to pick one. No date means today plus anything unfinished. */
 function DayBar({ day, onChange }: { day: string; onChange: (day: string) => void }) {
@@ -148,11 +160,11 @@ function DayBar({ day, onChange }: { day: string; onChange: (day: string) => voi
       ? 'Yesterday'
       : new Date(`${day}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   return (
-    <div className="flex items-center gap-2 lg:max-w-[620px]">
-      <button type="button" className="btn h-10 w-10 px-0 text-lg" aria-label="Previous day" onClick={() => shift(-1)}>
-        ‹
+    <div className="flex items-center gap-2 lg:max-w-[360px]">
+      <button type="button" className="btn h-10 w-10 px-0" aria-label="Previous day" onClick={() => shift(-1)}>
+        {CHEVRON(false)}
       </button>
-      <label className="btn relative h-10 flex-1 cursor-pointer text-sm">
+      <label className="btn relative h-10 flex-1 cursor-pointer text-sm font-medium">
         {label}
         <input
           type="date"
@@ -164,8 +176,8 @@ function DayBar({ day, onChange }: { day: string; onChange: (day: string) => voi
           className="absolute inset-0 cursor-pointer opacity-0"
         />
       </label>
-      <button type="button" className="btn h-10 w-10 px-0 text-lg" aria-label="Next day" disabled={!day} onClick={() => shift(1)}>
-        ›
+      <button type="button" className="btn h-10 w-10 px-0" aria-label="Next day" disabled={!day} onClick={() => shift(1)}>
+        {CHEVRON(true)}
       </button>
     </div>
   );
@@ -191,7 +203,8 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
   const now = useNow();
   const jobs = board.data?.jobs ?? [];
   const byStatus = (s: JobStatus) => jobs.filter((j) => j.status === s);
-  // On a phone, open on the column that has cars in it unless the person has picked one.
+  const emptyText = (c: Column) => (search ? 'Nothing matches' : day ? 'No jobs that day' : EMPTY[c]);
+  // Open on the column that has cars in it unless the person has picked one.
   const tab: Column = chosen ?? (day ? (['in_progress', 'pending', 'completed'] as const) : (['in_progress', 'pending'] as const)).find((c) => byStatus(c).length > 0) ?? 'in_progress';
 
   return (
@@ -200,8 +213,8 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
 
       <DayBar day={day} onChange={onDay} />
 
-      <div role="tablist" aria-label="Job status" className="flex border border-line bg-surface max-lg:gap-0.5 max-lg:rounded-[10px] max-lg:border-0 max-lg:bg-line-2 max-lg:p-[3px] lg:max-w-[620px]">
-        {COLUMNS.map((c, i) => (
+      <div role="tablist" aria-label="Job status" className="flex gap-0.5 rounded-[10px] bg-line-2 p-0.5 lg:max-w-[480px]">
+        {COLUMNS.map((c) => (
           <button
             key={c}
             type="button"
@@ -210,15 +223,9 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
             aria-selected={tab === c}
             aria-controls="board-panel"
             onClick={() => setChosen(c)}
-            className={`flex min-h-10 flex-1 cursor-pointer flex-col items-center justify-center px-2 py-1.5 max-lg:min-h-9 max-lg:rounded-lg max-lg:border-l-0 lg:min-h-12 lg:py-2 ${i > 0 ? 'border-l border-line' : ''} ${
-              tab === c
-                ? 'bg-blue-50 text-blue-d shadow-[inset_0_-3px_0_var(--color-blue)] max-lg:bg-surface max-lg:text-navy max-lg:shadow-[0_0_0_1px_var(--card-ring),0_1px_2px_rgba(11,42,91,0.08)]'
-                : 'text-ink-2 hover:bg-band max-lg:hover:bg-transparent'
-            }`}
+            className={`flex min-h-9 flex-1 cursor-pointer items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium transition-colors ${tab === c ? 'bg-surface text-navy shadow-card' : 'text-ink-2'}`}
           >
-            <span className="text-sm font-bold">
-              {STATUS_LABEL[c]} <span className="num">{byStatus(c).length}</span>
-            </span>
+            {STATUS_LABEL[c]} <span className="num ml-1">{byStatus(c).length}</span>
           </button>
         ))}
       </div>
@@ -226,18 +233,16 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
       {board.isPending && (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading">
           {[0, 1, 2].map((i) => (
-            <li key={i} className="skeleton h-40 border border-line" />
+            <li key={i} className="skeleton h-40 border border-line max-lg:rounded-[14px] max-lg:border-0" />
           ))}
         </ul>
       )}
 
       <section id="board-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {byStatus(tab).length === 0 && board.isSuccess ? (
-          <div className="border border-dashed border-line bg-band">
-            <EmptyRow>{search ? 'Nothing matches.' : day ? 'No jobs that day.' : EMPTY[tab]}</EmptyRow>
-          </div>
+          <p className="border border-dashed border-line px-4 py-8 text-center text-sm text-ink-3 max-lg:rounded-[14px]">{emptyText(tab)}</p>
         ) : (
-          <ul className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:grid-cols-2 lg:gap-3 xl:grid-cols-3">
+          <ul className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3">
             {byStatus(tab).map((job, i) => (
               <Card key={job.id} job={job} index={i} now={now} onAsk={steps.ask} />
             ))}
@@ -266,33 +271,29 @@ export function Jobs() {
     <>
       <div className="flex flex-wrap items-center gap-3">
         <input
-          className="input min-w-0 flex-1 sm:max-w-[320px] sm:flex-none"
+          className="input min-w-0 flex-1 sm:max-w-[320px] sm:flex-none lg:h-10 lg:text-sm"
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search plate or customer"
+          placeholder="Plate or customer"
           aria-label="Search jobs"
           autoComplete="off"
         />
-        <div role="radiogroup" aria-label="View" className="order-last flex w-full max-lg:gap-0.5 max-lg:rounded-[10px] max-lg:bg-line-2 max-lg:p-[3px] lg:order-none lg:ml-auto lg:w-[200px]">
-          {VIEWS.map((v, i) => (
+        <div role="radiogroup" aria-label="View" className="order-last flex w-full gap-0.5 rounded-[10px] bg-line-2 p-0.5 lg:order-none lg:ml-auto lg:w-[200px]">
+          {VIEWS.map((v) => (
             <button
               key={v.value}
               type="button"
               role="radio"
               aria-checked={view === v.value}
               onClick={() => setParams(v.value === 'list' ? { view: 'list' } : {}, { replace: true })}
-              className={`h-10 flex-1 cursor-pointer border-[1.5px] px-3 text-sm font-bold max-lg:h-9 max-lg:rounded-lg max-lg:border-0 lg:h-11 ${i > 0 ? '-ml-[1.5px] max-lg:ml-0' : ''} ${
-                view === v.value
-                  ? 'z-10 border-blue bg-blue-50 text-blue-d max-lg:bg-surface max-lg:text-navy max-lg:shadow-[0_0_0_1px_var(--card-ring),0_1px_2px_rgba(11,42,91,0.08)]'
-                  : 'border-line-strong bg-surface text-ink-2 max-lg:bg-transparent'
-              }`}
+              className={`h-9 flex-1 cursor-pointer rounded-lg px-3 text-sm font-medium transition-colors ${view === v.value ? 'bg-surface text-navy shadow-card' : 'text-ink-2'}`}
             >
               {v.label}
             </button>
           ))}
         </div>
-        <Link to="/jobs/new" className="btn btn-primary shrink-0 px-4 no-underline max-lg:hidden">
+        <Link to="/jobs/new" className="btn btn-primary shrink-0 px-4 font-medium no-underline max-lg:hidden lg:h-10">
           New job
         </Link>
       </div>
