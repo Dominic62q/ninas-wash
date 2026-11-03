@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../lib/auth';
 import { Avatar } from './Avatar';
+import { Icon } from './Icon';
 import { ThemePicker } from './ThemePicker';
 import { ConfirmPanel, Panel } from './ui';
 
@@ -39,21 +40,23 @@ export function ProfileMenu({ variant }: { variant: 'header' | 'rail' }) {
           <Avatar name={user.name} />
         </button>
       ) : (
-        <button
-          type="button"
-          aria-haspopup="dialog"
-          onClick={() => setMenu(true)}
-          className="mt-3 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-t border-white/15 px-1.5 pb-1 pt-3.5 text-left hover:bg-white/5"
-        >
-          <Avatar name={user.name} ring />
-          <span className="min-w-0 flex-1 leading-tight">
-            <span className="block truncate text-sm font-bold text-white">{user.name}</span>
-            <span className="block text-xs text-[#9fb2d4]">{ROLE_LABEL[user.role]}</span>
-          </span>
-          <span aria-hidden="true" className="text-[#9fb2d4]">
-            ⋯
-          </span>
-        </button>
+        <div className="mt-3 border-t border-white/15 pt-3">
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => setMenu(true)}
+            className="flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-white/5"
+          >
+            <Avatar name={user.name} ring />
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block truncate text-sm font-medium text-white">{user.name}</span>
+              {user.name.toLowerCase() !== ROLE_LABEL[user.role].toLowerCase() && <span className="block text-xs text-[#8fa3c7]">{ROLE_LABEL[user.role]}</span>}
+            </span>
+            <span aria-hidden="true" className="text-[#8fa3c7]">
+              <Icon name="more" size={16} />
+            </span>
+          </button>
+        </div>
       )}
 
       <Panel open={menu} onClose={() => (busy ? undefined : setMenu(false))} title="Your profile">
