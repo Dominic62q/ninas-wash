@@ -1,0 +1,551 @@
+@import 'tailwindcss';
+
+@import '@fontsource/hanken-grotesk/400.css';
+@import '@fontsource/hanken-grotesk/500.css';
+@import '@fontsource/hanken-grotesk/600.css';
+@import '@fontsource/hanken-grotesk/700.css';
+@import '@fontsource/hanken-grotesk/800.css';
+@import '@fontsource/kanit/600-italic.css';
+@import '@fontsource/kanit/700-italic.css';
+
+/* Brand and surface tokens, taken from the approved screens. */
+@theme {
+  --color-blue: #0068d8;
+  --color-blue-d: #0052b0;
+  --color-blue-50: #eaf2fd;
+  --color-blue-100: #cfe2fa;
+  --color-red: #da000c;
+  --color-red-d: #a5000a;
+  --color-red-50: #fdeced;
+  --color-navy: #0b2a5b;
+  --color-ink: #12213f;
+  --color-ink-2: #44577a;
+  --color-ink-3: #5b6c88;
+  --color-ground: #eceff4;
+  --color-band: #f4f6fa;
+  --color-line: #d5dce7;
+  --color-line-2: #e6eaf1;
+  --color-green: #0b7a43;
+  --color-green-50: #e4f4ea;
+  --color-amber: #8a5a00;
+  --color-amber-50: #fff0cc;
+  --color-surface: #ffffff;
+  --color-rail: #0b2a5b;
+  --color-line-strong: #c4d0e2;
+
+  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Kanit', 'Hanken Grotesk', system-ui, sans-serif;
+
+  /* Phone cards: a hairline ring instead of a border, so they sit softly on the grey ground. */
+  --shadow-card: 0 0 0 1px var(--card-ring), 0 1px 2px rgba(11, 42, 91, 0.05);
+}
+
+/* Things that are not Tailwind colours but still change with the theme. */
+:root {
+  color-scheme: light;
+  --page: var(--color-ground);
+  --page-phone: #f3f5f8;
+  --card-ring: #dde3ec;
+  --series-navy: #0b2a5b;
+  --field-border: #c3ccda;
+  --btn-border: #c9d2df;
+  --plate-border: #b4bfd0;
+  --plate-stripe: #0b2a5b;
+}
+
+/* Dark: a deep blue-grey, not black. The app sets data-theme on the page from the person's choice or the phone's setting. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-blue-d: #6aa8f5;
+  --color-blue-50: #15294b;
+  --color-blue-100: #1f3d70;
+  --color-red: #ff6770;
+  --color-red-d: #ff8d94;
+  --color-red-50: #3b161b;
+  --color-navy: #dbe6fa;
+  --color-ink: #e7edf8;
+  --color-ink-2: #b0bdd5;
+  --color-ink-3: #8f9fbd;
+  --color-ground: #0a111f;
+  --color-band: #182238;
+  --color-line: #29374f;
+  --color-line-2: #202c43;
+  --color-green: #45d392;
+  --color-green-50: #11332a;
+  --color-amber: #f2b94b;
+  --color-amber-50: #3a2c0b;
+  --color-surface: #121b2d;
+  --color-rail: #0d1d3d;
+  --color-line-strong: #3a4a68;
+  --page-phone: #0a111f;
+  --card-ring: #26344d;
+  --series-navy: #9db9e8;
+  --field-border: #3a4a68;
+  --btn-border: #3a4a68;
+  --plate-border: #4a5b7c;
+  --plate-stripe: #5f7fb8;
+}
+
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  /* Phones: everything sized in rem (spacing, small text) shrinks a notch, so screens feel lighter and fit more. */
+  @media (max-width: 1023px) {
+    html {
+      font-size: 14.5px;
+    }
+  }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Amounts line up in columns. */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-blue);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Page headings use the italic display face, like the logo. */
+  .display {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  /* A text-style button or link that is still a comfortable thumb target (44px tall). */
+  .tap {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+    margin: 0 -12px;
+    cursor: pointer;
+    font-weight: 700;
+    border-radius: 6px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 20px;
+    border-radius: 6px;
+    border: 1.5px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-navy);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn,
+  .tap {
+    transition:
+      transform 0.08s ease-out,
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+  .btn:active:not(:disabled),
+  .tap:active {
+    transform: scale(0.97);
+  }
+  :root[data-theme='dark'] .btn-primary,
+  :root[data-theme='dark'] .btn-primary:hover:not(:disabled) {
+    color: #fff;
+  }
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-blue);
+    border-color: var(--color-blue);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-blue-d);
+    border-color: var(--color-blue-d);
+  }
+  :root[data-theme='dark'] .btn-primary:hover:not(:disabled) {
+    background: var(--color-blue);
+    border-color: var(--color-blue);
+    filter: brightness(1.12);
+  }
+
+  /* Number plate: a quiet nod to the real thing. Soft border, a pale "GH" strip, no shouting. */
+  .plate {
+    display: inline-flex;
+    align-items: stretch;
+    flex: none;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 5px;
+    background: var(--color-surface);
+    padding: 0 8px 0 0;
+    overflow: hidden;
+    color: var(--color-navy);
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    line-height: 1.55;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .plate::before {
+    content: 'GH';
+    display: grid;
+    place-items: center;
+    margin-right: 7px;
+    padding: 0 4px;
+    background: var(--color-blue-50);
+    color: var(--color-blue-d);
+    font-size: 0.55em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+  .plate-sm {
+    font-size: 12px;
+  }
+  .plate-md {
+    font-size: 14px;
+  }
+  .plate-lg {
+    font-size: 20px;
+  }
+  /* Phones: smaller plates, so rows are not shouted at. */
+  @media (max-width: 1023px) {
+    .plate-md {
+      font-size: 13px;
+    }
+    .plate-lg {
+      font-size: 17px;
+    }
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field > label,
+  .field-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-ink-2);
+  }
+  .input {
+    height: 48px;
+    width: 100%;
+    padding: 0 14px;
+    border: 1.5px solid var(--color-line-strong);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font: inherit;
+    font-size: 16px; /* 16px stops phones zooming in on focus */
+  }
+  /* Phones: slimmer controls. The font stays 16px so the browser does not zoom in. */
+  @media (max-width: 1023px) {
+    .btn {
+      height: 40px;
+      padding: 0 14px;
+      font-size: 14px;
+    }
+    .tap {
+      min-height: 40px;
+    }
+    .input {
+      height: 42px;
+      padding: 0 12px;
+    }
+  }
+  .input:focus {
+    border-color: var(--color-blue);
+    outline: 3px solid var(--color-blue-100);
+    outline-offset: 0;
+  }
+  .input[aria-invalid='true'] {
+    border-color: var(--color-red);
+  }
+}
+
+/* The phone look: flat, quiet, one typeface. Computers keep the look above. */
+@layer components {
+  /* The wordmark keeps the italic display face on every screen size. */
+  .brand {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+
+  @media (max-width: 1023px) {
+    body {
+      background: var(--page-phone);
+    }
+    .display {
+      font-family: var(--font-sans);
+      font-style: normal;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .btn {
+      height: 44px;
+      border-width: 1px;
+      border-color: var(--btn-border);
+      border-radius: 10px;
+    }
+    .btn-primary {
+      border-color: var(--color-blue);
+    }
+    .input {
+      border-width: 1px;
+      border-color: var(--field-border);
+      border-radius: 10px;
+    }
+    .input:focus {
+      outline: 3px solid rgba(0, 104, 216, 0.18);
+    }
+    /* The plate: white, with a thin navy strip down the left. */
+    .plate {
+      border-color: var(--plate-border);
+      border-radius: 5px;
+      padding-right: 8px;
+      font-family: var(--font-sans);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      line-height: 1.5;
+    }
+    .plate::before {
+      content: '';
+      width: 5px;
+      margin-right: 8px;
+      padding: 0;
+      background: var(--plate-stripe);
+    }
+    .plate-lg {
+      border-width: 1.5px;
+      border-radius: 7px;
+    }
+    .plate-lg::before {
+      width: 8px;
+    }
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.toast {
+  animation: toast-in 0.18s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+
+/* Panels slide in: up from the bottom on a phone, in from the right on a computer. */
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes sheet-left {
+  from {
+    transform: translateX(48px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.panel[open] {
+  animation: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.panel[open]::backdrop {
+  animation: fade-in 0.2s ease-out;
+}
+@media (min-width: 1024px) {
+  .panel[open] {
+    animation-name: sheet-left;
+  }
+}
+
+/* Cards and rows ease in one after another instead of popping in. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.28s ease-out both;
+}
+
+/* After signing in on a phone, the blue opens up from the button, then a welcome and a thin progress bar. */
+@keyframes welcome-open {
+  from {
+    clip-path: circle(0 at 50% 78%);
+  }
+  to {
+    clip-path: circle(150% at 50% 78%);
+  }
+}
+@keyframes welcome-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes welcome-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes welcome-fill {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+.welcome {
+  animation: welcome-open 0.6s cubic-bezier(0.65, 0, 0.35, 1) backwards;
+}
+.welcome-logo {
+  animation: welcome-pop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.35s backwards;
+}
+.welcome-hi {
+  animation: welcome-rise 0.45s ease-out 0.55s backwards;
+}
+.welcome-sub {
+  animation: welcome-rise 0.45s ease-out 0.65s backwards;
+}
+.welcome-track {
+  animation: welcome-rise 0.4s ease-out 0.75s backwards;
+}
+.welcome-fill {
+  animation: welcome-fill 1.1s linear 0.8s backwards;
+}
+
+/* Home draws its bars in: segments wipe across, day columns grow up one after another. */
+@keyframes wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes grow-up {
+  from {
+    clip-path: inset(100% 0 0 0);
+  }
+  to {
+    clip-path: inset(-40px 0 0 0);
+  }
+}
+.wipe {
+  animation: wipe 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.grow-up {
+  animation: grow-up 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+/* A grey block with a soft sweep, shown while a list loads. */
+@keyframes sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--color-line-2) 25%, var(--color-band) 50%, var(--color-line-2) 75%);
+  background-size: 200% 100%;
+  animation: sweep 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel[open],
+  .panel[open]::backdrop,
+  .rise,
+  .welcome,
+  .welcome-logo,
+  .welcome-hi,
+  .welcome-sub,
+  .welcome-track,
+  .welcome-fill,
+  .wipe,
+  .grow-up,
+  .skeleton {
+    animation: none;
+  }
+  .btn:active:not(:disabled),
+  .tap:active {
+    transform: none;
+  }
+}
+
+/* While a sheet is open the page behind must not move, and a drag at the end of the sheet must not carry on into it. */
+html {
+  scrollbar-gutter: stable;
+}
+html:has(dialog.panel[open]),
+html:has(dialog.panel[open]) .app-scroll {
+  overflow: hidden;
+}
+.panel {
+  overscroll-behavior: contain;
+}

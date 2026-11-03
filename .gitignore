@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+.env
+.env.local
+
+# Local Postgres data folder and dev-only credentials
+.pgdata/
+.dev-credentials.txt
+.uploads/
+
+.vite/
+coverage/
+*.tsbuildinfo

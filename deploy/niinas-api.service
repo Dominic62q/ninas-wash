@@ -1,0 +1,22 @@
+# /etc/systemd/system/niinas-api.service
+# Then: sudo systemctl daemon-reload && sudo systemctl enable --now niinas-api
+[Unit]
+Description=Niinas Wash API
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=niinas
+WorkingDirectory=/opt/niinas/apps/api
+Environment=NODE_ENV=production
+# DATABASE_URL, WEB_ORIGIN and the rest live in this file (chmod 600, owned by niinas). Never commit it.
+EnvironmentFile=/etc/niinas/api.env
+ExecStart=/usr/bin/npx tsx src/server.ts
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

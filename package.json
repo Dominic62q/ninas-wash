@@ -1,0 +1,29 @@
+{
+  "name": "niinas-wash",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n db,api,web -c blue,red,green \"npm:dev:db\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:db": "npm run db:start -w @niinas/api",
+    "dev:api": "npm run dev -w @niinas/api",
+    "dev:web": "npm run dev -w @niinas/web",
+    "db:generate": "npm run db:generate -w @niinas/api",
+    "db:migrate": "npm run db:migrate -w @niinas/api",
+    "db:seed": "npm run db:seed -w @niinas/api",
+    "db:create-owner": "npm run db:create-owner -w @niinas/api --",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0"
+  }
+}
