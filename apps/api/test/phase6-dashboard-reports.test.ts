@@ -66,7 +66,7 @@ async function finishedJob(): Promise<number> {
   return id;
 }
 const pay = (jobId: number, body: Record<string, unknown> = {}) =>
-  call(cashier, 'POST', `/api/jobs/${jobId}/payments`, { method: 'cash', amount: 1000, idemKey: newKey(), ...body });
+  call(cashier, 'POST', `/api/jobs/${jobId}/payments`, { methodId: 1, amount: 1000, idemKey: newKey(), ...body });
 
 beforeAll(async () => {
   app = await buildApp({ db, config });
@@ -95,14 +95,14 @@ describe('the dashboard', () => {
     const waiting = await bookJob(false);
     const washing = await bookJob(true);
     const ready = await finishedJob();
-    expect((await pay(ready, { method: 'cash', amount: 2000 })).statusCode).toBe(201);
-    expect((await pay(washing, { method: 'momo', amount: 700, momoReference: 'MP260101.1234.A12345' })).statusCode).toBe(201);
+    expect((await pay(ready, { methodId: 1, amount: 2000 })).statusCode).toBe(201);
+    expect((await pay(washing, { methodId: 2, amount: 700, reference: 'MP260101.1234.A12345' })).statusCode).toBe(201);
     void waiting;
 
     const after = await dashboard(manager);
     expect(after.day).toBe(TODAY());
-    expect(after.takings.cash - before.takings.cash).toBe(2000);
-    expect(after.takings.momo - before.takings.momo).toBe(700);
+    expect(after.takings.drawer - before.takings.drawer).toBe(2000);
+    expect(after.takings.other - before.takings.other).toBe(700);
     expect(after.takings.total - before.takings.total).toBe(2700);
     expect(after.takings.payments - before.takings.payments).toBe(2);
     expect(after.cars.waiting - before.cars.waiting).toBe(1);
@@ -167,8 +167,8 @@ describe('the dashboard', () => {
 
   it('adds up today’s expenses and flags the ones with no receipt', async () => {
     const before = (await dashboard(cashier)).expenses!;
-    await call(cashier, 'POST', '/api/expenses', { category: 'Water', amount: 1200, method: 'cash', receipt: 'R-1', idemKey: newKey() });
-    await call(cashier, 'POST', '/api/expenses', { category: 'Water', amount: 300, method: 'momo', idemKey: newKey() });
+    await call(cashier, 'POST', '/api/expenses', { category: 'Water', amount: 1200, methodId: 1, receipt: 'R-1', idemKey: newKey() });
+    await call(cashier, 'POST', '/api/expenses', { category: 'Water', amount: 300, methodId: 2, idemKey: newKey() });
     const after = (await dashboard(cashier)).expenses!;
     expect(after.total - before.total).toBe(1500);
     expect(after.withoutReceipt - before.withoutReceipt).toBe(1);
@@ -186,7 +186,7 @@ describe('the dashboard', () => {
 
   it('warns about a recent day with money moving that was never closed, until it is closed', async () => {
     const day = daysAgo(2);
-    expect((await call(cashier, 'POST', '/api/expenses', { category: 'Water', amount: 800, method: 'cash', receipt: 'R-9', spentOn: day, idemKey: newKey() })).statusCode).toBe(201);
+    expect((await call(cashier, 'POST', '/api/expenses', { category: 'Water', amount: 800, methodId: 1, receipt: 'R-9', spentOn: day, idemKey: newKey() })).statusCode).toBe(201);
     expect((await dashboard(manager)).unclosedDays).toContain(day);
     expect((await dashboard(owner)).unclosedDays).toContain(day);
 
@@ -232,7 +232,7 @@ describe('reports', () => {
     expect(r.byDay[0]!.day).toBe(daysAgo(29));
     expect(r.byDay[29]!.day).toBe(TODAY());
     expect(r.byDay.reduce((s, d) => s + d.total, 0)).toBe(r.takings.total);
-    expect(r.byDay.reduce((s, d) => s + d.cash, 0)).toBe(r.takings.cash);
+    expect(r.byDay.reduce((s, d) => s + d.drawer, 0)).toBe(r.takings.drawer);
   });
 
   it('add up what one day sold, who earned and what was spent', async () => {
@@ -243,19 +243,19 @@ describe('reports', () => {
     expect((await call(cashier, 'PATCH', `/api/jobs/${b}`, { discount: 500 })).statusCode).toBe(200);
     expect((await call(cashier, 'POST', `/api/jobs/${b}/status`, { to: 'completed' })).statusCode).toBe(200);
     expect((await pay(a, { amount: 5000 })).statusCode).toBe(201);
-    expect((await pay(b, { method: 'momo', amount: 1500, momoReference: 'MP260101.1234.B67890' })).statusCode).toBe(201);
-    await call(cashier, 'POST', '/api/expenses', { category: 'Electricity', amount: 2500, method: 'momo', receipt: 'E-1', idemKey: newKey() });
+    expect((await pay(b, { methodId: 2, amount: 1500, reference: 'MP260101.1234.B67890' })).statusCode).toBe(201);
+    await call(cashier, 'POST', '/api/expenses', { category: 'Electricity', amount: 2500, methodId: 2, receipt: 'E-1', idemKey: newKey() });
 
     const r = await report(TODAY(), TODAY());
     expect(r.takings.total - before.takings.total).toBe(6500);
-    expect(r.takings.cash - before.takings.cash).toBe(5000);
-    expect(r.takings.momo - before.takings.momo).toBe(1500);
+    expect(r.takings.drawer - before.takings.drawer).toBe(5000);
+    expect(r.takings.other - before.takings.other).toBe(1500);
     expect(r.jobs.count - before.jobs.count).toBe(2);
     expect(r.jobs.sales - before.jobs.sales).toBe(10000);
     expect(r.jobs.net - before.jobs.net).toBe(9500);
     expect(r.jobs.discounts - before.jobs.discounts).toBe(500);
     expect(r.expenses.total - before.expenses.total).toBe(2500);
-    expect(r.expenses.momo - before.expenses.momo).toBe(2500);
+    expect(r.expenses.other - before.expenses.other).toBe(2500);
 
     const service = (x: ReportDto) => x.byService.find((s) => s.name === 'P6 Wash') ?? { count: 0, sales: 0 };
     expect(service(r).count - service(before).count).toBe(2);
@@ -297,7 +297,7 @@ describe('reports', () => {
   it('list expenses by category, biggest first, and leave voided ones out', async () => {
     const day = daysAgo(4);
     const before = await report(day, day);
-    const made = await call(cashier, 'POST', '/api/expenses', { category: 'Repairs', amount: 4000, method: 'cash', spentOn: day, idemKey: newKey() });
+    const made = await call(cashier, 'POST', '/api/expenses', { category: 'Repairs', amount: 4000, methodId: 1, spentOn: day, idemKey: newKey() });
     expect(made.statusCode).toBe(201);
     const mid = await report(day, day);
     expect(mid.expenses.total - before.expenses.total).toBe(4000);
@@ -318,7 +318,7 @@ describe('reports', () => {
 
     // Past days with an expense and no close (phase 5 days are closed or empty; this one has an expense only).
     const open = daysAgo(1);
-    expect((await call(cashier, 'POST', '/api/expenses', { category: 'Water', amount: 100, method: 'cash', receipt: 'x', spentOn: open, idemKey: newKey() })).statusCode).toBe(201);
+    expect((await call(cashier, 'POST', '/api/expenses', { category: 'Water', amount: 100, methodId: 1, receipt: 'x', spentOn: open, idemKey: newKey() })).statusCode).toBe(201);
     const week = await report(daysAgo(6), TODAY());
     expect(week.cash.notClosed).toContain(open);
     expect(week.cash.notClosed).not.toContain(TODAY()); // today is still being worked on

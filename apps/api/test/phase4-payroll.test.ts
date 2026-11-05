@@ -63,7 +63,7 @@ async function finishedJob(lines: { serviceId: number; attendantIds: number[] }[
 }
 
 const payout = (who: string, attendantId: number, body: Record<string, unknown>) =>
-  call(who, 'POST', '/api/commissions/payouts', { attendantId, method: 'cash', idemKey: newKey(), ...body });
+  call(who, 'POST', '/api/commissions/payouts', { attendantId, methodId: 1, idemKey: newKey(), ...body });
 const tip = (who: string, attendantId: number, body: Record<string, unknown>) =>
   call(who, 'POST', '/api/tips', { attendantId, kind: 'held', amount: 500, idemKey: newKey(), ...body });
 
@@ -172,7 +172,7 @@ describe('paying commission out', () => {
     const first = await payout(manager, kwame, { amount: 300 });
     expect(first.statusCode).toBe(201);
     expect(first.json().ledger).toMatchObject({ owed: 450, paidOut: 300 });
-    const second = await payout(owner, kwame, { amount: 450, method: 'momo', note: 'Sent to his MoMo' });
+    const second = await payout(owner, kwame, { amount: 450, methodId: 2, note: 'Sent to his MoMo' });
     expect(second.json().ledger).toMatchObject({ owed: 0, paidOut: 750 });
     expect(second.json().ledger.entries[0]).toMatchObject({ type: 'payout', amount: 450 });
   });
@@ -363,7 +363,7 @@ describe('the database rules', () => {
     await finishedJob([{ serviceId: wash, attendantIds: [zed] }]);
     const manId = (await db.execute<{ id: number }>(sql`select id from users where username = 'p4.manager'`)).rows[0]!.id;
     const msg = await refusedWith(() =>
-      db.execute(sql`insert into commission_payouts (attendant_id, amount, method, paid_by, idem_key) values (${zed}, 751, 'cash', ${manId}, 'direct-over')`),
+      db.execute(sql`insert into commission_payouts (attendant_id, amount, method_id, paid_by, idem_key) values (${zed}, 751, 1, ${manId}, 'direct-over')`),
     );
     expect(msg).toMatch(/more than has been earned/);
   });

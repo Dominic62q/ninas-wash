@@ -40,6 +40,7 @@ export const NAV: NavItem[] = [
     group: 'Setup',
   },
   { path: '/services', label: 'Services', icon: 'tag', needs: 'service.manage', phase: 1, group: 'Setup', inSettings: { section: 'Business', blurb: 'What you sell, its price and the commission it earns' } },
+  { path: '/payment-methods', label: 'Payment methods', icon: 'coin', needs: 'settings.manage', phase: 9, group: 'Setup', inSettings: { section: 'Business', blurb: 'Cash, MoMo and any other way money is paid' } },
   { path: '/staff', label: 'Staff and users', icon: 'staff', needs: 'user.reset_password', phase: 1, group: 'Setup', inSettings: { section: 'People', blurb: 'Attendants, and who can sign in' } },
   { path: '/roles', label: 'Roles and access', icon: 'lock', needs: 'role.manage', phase: 9, group: 'Setup', inSettings: { section: 'People', blurb: 'Make roles and choose what each may do' } },
   { path: '/sms', label: 'Texts', icon: 'chat', needs: 'sms.view', phase: 8, group: 'Setup', inSettings: { section: 'Customers', blurb: 'The texts customers get, and when' } },

@@ -19,7 +19,7 @@ import { AttendantPicker, StatusPill, sharedNote, useAttendants, useServices } f
 import { SlideToConfirm } from '../components/SlideToConfirm';
 import { TipPanel } from '../components/TipPanel';
 import { useJobSteps, type JobStep } from '../components/JobActions';
-import { DispatchPanel, PayPanel, PayPill, VoidPaymentPanel, methodLabel } from '../components/PaymentBits';
+import { DispatchPanel, PayPanel, PayPill, VoidPaymentPanel } from '../components/PaymentBits';
 import { useToast } from '../components/Toast';
 import { Field, FormError, Panel, Pill, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
@@ -51,7 +51,8 @@ function describe(h: JobHistoryEntry): string {
     case 'job.void':
       return 'Voided';
     case 'payment.record':
-      return `${a.method === 'momo' ? 'MoMo' : 'Cash'} ${money(a.amount)} received`;
+      // Entries from before payment methods were editable hold the old lowercase words.
+      return `${a.method === 'momo' ? 'MoMo' : a.method === 'cash' ? 'Cash' : String(a.method)} ${money(a.amount)} received`;
     case 'payment.void':
       return `Payment of ${money(b.amount)} voided`;
     case 'job.dispatch':
@@ -498,11 +499,11 @@ export function JobDetail() {
               <li key={p.id} className="flex items-start gap-3 px-4 py-2.5">
                 <div className={`min-w-0 flex-1 ${p.voided ? 'text-ink-3' : ''}`}>
                   <p className={`font-medium ${p.voided ? 'line-through' : 'text-ink'}`}>
-                    {methodLabel(p.method)} <span className="num">{formatGHS(p.amount)}</span>
+                    {p.method} <span className="num">{formatGHS(p.amount)}</span>
                   </p>
                   <p className="text-xs text-ink-3">
                     {p.by}, {shortDateTime(p.at)}
-                    {p.momoReference && <> · Ref {p.momoReference}</>}
+                    {p.reference && <> · Ref {p.reference}</>}
                   </p>
                   {p.voided && (
                     <p className="text-xs font-medium text-red-d">

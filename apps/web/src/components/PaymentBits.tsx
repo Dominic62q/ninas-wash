@@ -1,15 +1,30 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { PAY_METHODS, dispatchInput, formatAmount, formatGHS, parseGHS, voidInput, type JobDetail, type PaymentDto, type PayMethod } from '@niinas/shared';
+import { dispatchInput, formatAmount, formatGHS, parseGHS, referenceProblem, voidInput, type JobDetail, type PayMethodDto, type PaymentDto } from '@niinas/shared';
 import { useToast } from './Toast';
+import { Select } from './Dropdown';
 import { Choice, Field, FormError, Panel, Pill, errorMessage } from './ui';
 import { api } from '../lib/api';
 import { newKey } from '../lib/format';
+import { useActiveMethods } from '../lib/useMethods';
 
-const METHOD_LABEL: Record<PayMethod, string> = { cash: 'Cash', momo: 'MoMo' };
-const METHOD_OPTIONS = PAY_METHODS.map((m) => ({ value: m, label: METHOD_LABEL[m] }));
-
-export const methodLabel = (m: PayMethod) => METHOD_LABEL[m];
+/** Pick how something was paid. Up to three ways sit side by side, more than that become a list. */
+export function MethodPicker({ label, value, onChange }: { label: string; value: number | null; onChange: (m: PayMethodDto) => void }) {
+  const { active, first } = useActiveMethods();
+  const current = active.find((m) => m.id === value) ?? first;
+  if (!current) return null;
+  const options = active.map((m) => ({ value: String(m.id), label: m.name }));
+  const pick = (id: string) => onChange(active.find((m) => String(m.id) === id)!);
+  if (active.length > 3) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-ink-2">{label}</span>
+        <Select label={label} value={String(current.id)} options={options} onChange={pick} />
+      </div>
+    );
+  }
+  return <Choice label={label} value={String(current.id)} options={options} onChange={pick} />;
+}
 
 /** Unpaid, part paid or paid, from what the job costs and what has been received. */
 export function PayPill({ total, paid }: { total: number; paid: number }) {
@@ -24,7 +39,9 @@ const plain = (pesewas: number) => formatAmount(pesewas).replace(/,/g, '');
 export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [method, setMethod] = useState<PayMethod>('cash');
+  const { first } = useActiveMethods();
+  const [picked, setPicked] = useState<PayMethodDto | null>(null);
+  const method = picked ?? first;
   const [amountText, setAmountText] = useState(plain(job.balance));
   const [reference, setReference] = useState('');
   const [received, setReceived] = useState('');
@@ -34,7 +51,7 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
 
   const amount = parseGHS(amountText);
   const handed = received.trim() === '' ? null : parseGHS(received);
-  const change = method === 'cash' && amount !== null && handed !== null && handed > amount ? handed - amount : null;
+  const change = method?.inDrawer && amount !== null && handed !== null && handed > amount ? handed - amount : null;
 
   const save = useMutation({
     mutationFn: (body: unknown) => api(`/jobs/${job.id}/payments`, { method: 'POST', body }),
@@ -49,9 +66,11 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
   function submit() {
     if (amount === null || amount <= 0) return setError('Enter the amount, like 20 or 20.50');
     if (amount > job.balance) return setError(`Only ${formatGHS(job.balance)} is still owed`);
-    if (method === 'momo' && !reference.trim()) return setError('Enter the MoMo reference');
+    if (!method) return setError('Pick how the customer paid');
+    const problem = referenceProblem(method, reference);
+    if (problem) return setError(problem);
     setError(null);
-    save.mutate({ method, amount, momoReference: method === 'momo' ? reference : null, idemKey });
+    save.mutate({ methodId: method.id, amount, reference: reference.trim() || null, idemKey });
   }
 
   return (
@@ -59,15 +78,15 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
       <p className="text-ink-2">
         <strong className="text-ink">{formatGHS(job.balance)}</strong> still owed on this job.
       </p>
-      <Choice label="Paid by" value={method} options={METHOD_OPTIONS} onChange={(m) => { setMethod(m); setError(null); }} />
+      <MethodPicker label="Paid by" value={method?.id ?? null} onChange={(m) => { setPicked(m); setError(null); }} />
       <Field label="Amount (GH₵)" hint="Less than the balance? Take the rest in another payment.">
         <input className="input" inputMode="decimal" value={amountText} onChange={(e) => { setAmountText(e.target.value); setError(null); }} autoComplete="off" aria-label="Amount" />
       </Field>
-      {method === 'momo' ? (
-        <Field label="MoMo reference">
+      {method?.requiresReference ? (
+        <Field label={`${method.name} reference`}>
           <input className="input" value={reference} onChange={(e) => { setReference(e.target.value); setError(null); }} maxLength={40} autoComplete="off" placeholder="From the confirmation message" />
         </Field>
-      ) : (
+      ) : method?.inDrawer ? (
         <Field label="Cash received (optional)" hint={change !== null ? undefined : 'To work out the change'}>
           <input className="input" inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} autoComplete="off" placeholder="0.00" />
           {/* Phone: the notes people usually hand over, so the change works out without typing. */}
@@ -86,7 +105,7 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
             </span>
           )}
         </Field>
-      )}
+      ) : null}
       <FormError message={error ?? (save.isError ? errorMessage(save.error) : null)} />
       <button type="button" className="btn btn-primary" disabled={save.isPending} onClick={submit}>
         {save.isPending ? 'Saving…' : 'Save payment'}
@@ -123,7 +142,7 @@ export function VoidPaymentPanel({ job, payment, onClose }: { job: JobDetail; pa
       {payment && (
         <>
           <p className="text-ink-2">
-            {methodLabel(payment.method)} <strong className="text-ink">{formatGHS(payment.amount)}</strong> goes back onto the balance. It stays on record with your name and reason.
+            {payment.method} <strong className="text-ink">{formatGHS(payment.amount)}</strong> goes back onto the balance. It stays on record with your name and reason.
           </p>
           <Field label="Reason" error={error ?? undefined}>
             <input className="input" value={reason} onChange={(e) => { setReason(e.target.value); setError(null); }} maxLength={200} autoComplete="off" aria-invalid={!!error} placeholder="Typed the wrong amount" />

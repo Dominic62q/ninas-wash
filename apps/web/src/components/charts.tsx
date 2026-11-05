@@ -6,6 +6,9 @@ import { EmptyRow } from './ui';
 export const SERIES = ['#0068d8', 'var(--series-navy)', '#0b7a43', '#d99a00', '#7fb2ee', '#9aa7bd'];
 export const CASH_COLOUR = '#0068d8';
 export const MOMO_COLOUR = '#7fb2ee';
+/** One colour per payment method, in the order they are listed. Money in the drawer is the strong blue, everything else steps lighter. */
+export const METHOD_COLOURS = [CASH_COLOUR, MOMO_COLOUR, '#0a8f6c', '#d99a00', '#8892a0', '#5b7bd5'];
+export const methodColour = (i: number) => METHOD_COLOURS[i % METHOD_COLOURS.length]!;
 
 export function Legend({ items }: { items: { label: string; colour: string; value?: ReactNode }[] }) {
   return (
@@ -93,7 +96,7 @@ export function Donut({ parts, centre, size = 120 }: { parts: { label: string; v
 const weekday = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
 
 /** A week (or any run of days) of takings, cash and MoMo stacked. The last bar is today and is labelled with its amount. */
-export function DayColumns({ days, height = 132 }: { days: { day: string; cash: number; momo: number; total: number }[]; height?: number }) {
+export function DayColumns({ days, height = 132 }: { days: { day: string; drawer: number; other: number; total: number }[]; height?: number }) {
   const max = Math.max(1, ...days.map((d) => d.total));
   return (
     <div className="px-4 pb-3 pt-5">
@@ -113,8 +116,8 @@ export function DayColumns({ days, height = 132 }: { days: { day: string; cash: 
                 style={{ animationDelay: `${500 + i * 60}ms` }}
               >
                 {last && d.total > 0 && <span className="num absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-bold text-navy" style={{ bottom: `calc(${pct(d.total)} + 2px)` }}>{formatGHS(d.total)}</span>}
-                <div style={{ height: pct(d.momo), background: MOMO_COLOUR }} />
-                <div style={{ height: pct(d.cash), background: CASH_COLOUR }} />
+                <div style={{ height: pct(d.other), background: MOMO_COLOUR }} />
+                <div style={{ height: pct(d.drawer), background: CASH_COLOUR }} />
                 {d.total === 0 && <div className="h-0.5 bg-line" />}
               </div>
             );

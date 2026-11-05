@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PAY_METHODS } from './jobs.js';
+import type { Takings } from './methods.js';
 
 /** Input rules for Phase 5 (expenses and the daily close). The browser and the server run the exact same checks. */
 
@@ -30,7 +30,7 @@ export const expenseInput = z
   .object({
     category: z.enum(EXPENSE_CATEGORIES),
     amount,
-    method: z.enum(PAY_METHODS),
+    methodId: z.number().int().positive('Pick how it was paid'),
     /** The day it was spent. Empty means today. */
     spentOn: day.nullish().transform((v) => v ?? null),
     /** A receipt number, or where the paper is kept. Empty means there is no receipt. */
@@ -58,7 +58,9 @@ export interface ExpenseDto {
   id: number;
   category: ExpenseCategory | string;
   amount: number;
-  method: 'cash' | 'momo';
+  methodId: number;
+  /** The method's name. */
+  method: string;
   spentOn: string;
   /** A receipt number or where the paper is kept. Null means no receipt, and the screen says so. */
   receipt: string | null;
@@ -74,8 +76,10 @@ export interface ExpensesOverview {
   expenses: ExpenseDto[];
   /** Voided ones left out. */
   sum: number;
-  cashSum: number;
-  momoSum: number;
+  /** Spent through the cash drawer. */
+  drawerSum: number;
+  /** Spent some other way (MoMo, a bank). */
+  otherSum: number;
   /** Not voided, and nothing to show for it. */
   withoutReceipt: number;
   /** Days nobody can add or void expenses on, because the day was closed. */
@@ -90,7 +94,7 @@ export interface DailyCloseRow {
   countedCash: number;
   /** Counted minus expected. Negative is a shortage. */
   difference: number;
-  momoTotal: number;
+  otherTotal: number;
   note: string | null;
   closedBy: string;
   closedAt: string;
@@ -105,7 +109,7 @@ export interface DaySummary {
   close: DailyCloseRow | null;
   /** The day is closed, so nothing can be added to it or voided on it. */
   locked: boolean;
-  takings: { cash: number; momo: number; total: number; payments: number };
+  takings: Takings;
   /**
    * The drawer's maths. Null for a cashier who has not closed yet, who counts without being told the answer.
    * `expectedBeforeFloat` is what comes into the drawer minus what goes out. Add the opening float to get the cash that should be there.
@@ -118,8 +122,8 @@ export interface DaySummary {
     handoutsOut: number;
     expectedBeforeFloat: number;
   } | null;
-  /** Money that left by MoMo today. Not part of the drawer. */
-  momoOut: { expenses: number; payouts: number };
+  /** Money that left some way other than the drawer today (MoMo, a bank). Not part of the drawer. */
+  otherOut: { expenses: number; payouts: number };
   /** Cars finished but not fully paid for. */
   unpaid: { count: number; amount: number };
   /** Cars still being washed or waiting. */

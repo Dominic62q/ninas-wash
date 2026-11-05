@@ -139,7 +139,7 @@ describe('changing and removing roles', () => {
     const id = created.json().role.id as number;
     await makeUser('p9.shifter', id);
     const cookie = await signIn('p9.shifter');
-    const body = { amount: 500, category: 'Other', note: 'x', method: 'cash', idemKey: 'p9-shift-1' };
+    const body = { amount: 500, category: 'Other', note: 'x', methodId: 1, idemKey: 'p9-shift-1' };
     expect((await call(cookie, 'POST', '/api/expenses', body)).statusCode).not.toBe(403);
 
     const patch = await call(owner, 'PATCH', `/api/roles/${id}`, { permissions: ['job.create'] });

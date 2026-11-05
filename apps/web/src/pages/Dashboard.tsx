@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { formatGHS, type DashboardDto } from '@niinas/shared';
 import { Avatar } from '../components/Avatar';
-import { BarList, CASH_COLOUR, DayColumns, Donut, Legend, MOMO_COLOUR, SERIES, SegmentBar } from '../components/charts';
+import { BarList, CASH_COLOUR, DayColumns, Donut, Legend, MOMO_COLOUR, SERIES, SegmentBar, methodColour } from '../components/charts';
 import { FormError, Pill, SkeletonRows, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -100,7 +100,7 @@ export function Dashboard() {
   }
 
   const yesterday = d?.last7?.[5]?.total ?? null;
-  const split = d ? [{ label: 'Cash', value: d.takings.cash, colour: CASH_COLOUR }, { label: 'MoMo', value: d.takings.momo, colour: MOMO_COLOUR }] : [];
+  const split = d ? d.takings.byMethod.map((m, i) => ({ label: m.name, value: m.amount, colour: methodColour(i) })) : [];
   const serviceTotal = d?.services.reduce((s, x) => s + x.sales, 0) ?? 0;
 
   return (
@@ -161,7 +161,7 @@ export function Dashboard() {
             <Card title="Last 7 days" to={can('report.view') ? '/reports' : undefined} link="Reports" delay={240}>
               <DayColumns days={d.last7} />
               <div className="border-t border-line-2 px-4 py-2">
-                <Legend items={[{ label: 'Cash', colour: CASH_COLOUR }, { label: 'MoMo', colour: MOMO_COLOUR }]} />
+                <Legend items={[{ label: 'In the drawer', colour: CASH_COLOUR }, { label: 'Not in the drawer', colour: MOMO_COLOUR }]} />
               </div>
             </Card>
           )}

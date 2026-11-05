@@ -302,10 +302,10 @@ async function writeJob(plan: Plan): Promise<void> {
     for (const [i, amount] of parts.entries()) {
       const momo = chance(0.4);
       const at = shape === 'dispatched' ? out : done;
-      const momoReference = momo ? `MP${int(100000000, 999999999)}` : null;
+      const reference = momo ? `MP${int(100000000, 999999999)}` : null;
       const [paid] = await tx
         .insert(payments)
-        .values({ jobId, method: momo ? 'momo' : 'cash', amount, momoReference, idemKey: `demo-${jobId}-${i}`, recordedBy: by, createdAt: at })
+        .values({ jobId, methodId: momo ? 2 : 1, amount, reference, idemKey: `demo-${jobId}-${i}`, recordedBy: by, createdAt: at })
         .returning();
       await tx.insert(auditLogs).values({
         at,
@@ -313,7 +313,7 @@ async function writeJob(plan: Plan): Promise<void> {
         action: 'payment.record',
         recordTable: 'payments',
         recordId: paid!.id,
-        after: { method: momo ? 'momo' : 'cash', amount, momoReference },
+        after: { method: momo ? 'MoMo' : 'Cash', amount, reference },
       });
     }
     if (shape === 'dispatched') {
@@ -371,12 +371,12 @@ for (const person of attendantRows) {
   const amount = Math.floor((owed * 0.7) / 100) * 100;
   if (amount > 0) {
     const at = new Date(now - 2 * DAY);
-    const method = chance(0.5) ? 'cash' : 'momo';
+    const methodId = chance(0.5) ? 1 : 2;
     const [row] = await db
       .insert(commissionPayouts)
-      .values({ attendantId: person.id, amount, method, paidBy: manager, idemKey: `demo-payout-${person.id}`, createdAt: at })
+      .values({ attendantId: person.id, amount, methodId, paidBy: manager, idemKey: `demo-payout-${person.id}`, createdAt: at })
       .returning();
-    await db.insert(auditLogs).values({ at, userId: manager, action: 'commission.payout', recordTable: 'commission_payouts', recordId: row!.id, after: { attendant: person.name, method, amount } });
+    await db.insert(auditLogs).values({ at, userId: manager, action: 'commission.payout', recordTable: 'commission_payouts', recordId: row!.id, after: { attendant: person.name, method: methodId === 1 ? 'Cash' : 'MoMo', amount } });
     await relinkPayouts(db, person.id);
   }
   const old = await db

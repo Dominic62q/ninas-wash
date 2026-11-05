@@ -383,7 +383,7 @@ describe('voiding', () => {
   it('refuses while the job has payments', async () => {
     const job = await book();
     const [recorder] = await db.select().from(users).where(eq(users.username, 'p2.cashier'));
-    await db.insert(payments).values({ jobId: job.id, method: 'cash', amount: 5000, idemKey: `p2-${job.id}`, recordedBy: recorder!.id });
+    await db.insert(payments).values({ jobId: job.id, methodId: 1, amount: 5000, idemKey: `p2-${job.id}`, recordedBy: recorder!.id });
     const res = await call(manager, 'POST', `/api/jobs/${job.id}/void`, { reason: 'Mistake made' });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe('has_payments');

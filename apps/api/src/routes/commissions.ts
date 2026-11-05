@@ -2,11 +2,12 @@ import { desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { formatGHS, payoutInput, reasonInput, type CommissionLedger, type CommissionOverview, type LedgerEntry } from '@niinas/shared';
 import type { DbOrTx } from '../db/client.js';
-import { attendants, commissionPayouts, commissions, jobLineAttendants, jobLines, jobs, services, users, vehicles } from '../db/schema.js';
+import { attendants, commissionPayouts, commissions, jobLineAttendants, jobLines, jobs, paymentMethods, services, users, vehicles } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
 import { balanceOf, relinkPayouts } from '../lib/commissions.js';
 import { assertDayOpen, dayOf } from '../lib/dayLock.js';
 import { HttpError, conflict, notFound } from '../lib/errors.js';
+import { activeMethod } from '../lib/methods.js';
 import { idParams } from '../lib/params.js';
 
 const LEDGER_LIMIT = 200;
@@ -47,9 +48,10 @@ export async function ledgerFor(db: DbOrTx, attendantId: number): Promise<Commis
     .limit(LEDGER_LIMIT);
 
   const payoutRows = await db
-    .select({ p: commissionPayouts, by: users.name })
+    .select({ p: commissionPayouts, by: users.name, method: paymentMethods.name })
     .from(commissionPayouts)
     .innerJoin(users, eq(users.id, commissionPayouts.paidBy))
+    .innerJoin(paymentMethods, eq(paymentMethods.id, commissionPayouts.methodId))
     .where(eq(commissionPayouts.attendantId, attendantId))
     .orderBy(desc(commissionPayouts.id))
     .limit(LEDGER_LIMIT);
@@ -72,12 +74,13 @@ export async function ledgerFor(db: DbOrTx, attendantId: number): Promise<Commis
       }),
     ),
     ...payoutRows.map(
-      ({ p, by }): LedgerEntry => ({
+      ({ p, by, method }): LedgerEntry => ({
         type: 'payout',
         id: p.id,
         at: p.createdAt.toISOString(),
         amount: p.amount,
-        method: p.method,
+        methodId: p.methodId,
+        method,
         by,
         note: p.note,
         voided: p.voidedAt ? { at: p.voidedAt.toISOString(), by: nameOf.get(p.voidedBy!) ?? 'Someone', reason: p.voidReason ?? '' } : null,
@@ -124,12 +127,13 @@ export const commissionRoutes: FastifyPluginAsync = async (app) => {
         return false;
       }
       await assertDayOpen(tx, dayOf());
+      const method = await activeMethod(tx, input.methodId);
       const { owed } = await balanceOf(tx, input.attendantId);
       if (owed <= 0) throw conflict('nothing_owed', `Nothing is owed to ${person.name}.`);
       if (input.amount > owed) throw new HttpError(400, 'too_much', `Only ${formatGHS(owed)} is owed to ${person.name}.`);
       const [row] = await tx
         .insert(commissionPayouts)
-        .values({ attendantId: input.attendantId, amount: input.amount, method: input.method, note: input.note, idemKey: input.idemKey, paidBy: req.user!.id })
+        .values({ attendantId: input.attendantId, amount: input.amount, methodId: method.id, note: input.note, idemKey: input.idemKey, paidBy: req.user!.id })
         .returning();
       await relinkPayouts(tx, input.attendantId);
       await writeAudit(tx, {
@@ -137,7 +141,7 @@ export const commissionRoutes: FastifyPluginAsync = async (app) => {
         action: 'commission.payout',
         recordTable: 'commission_payouts',
         recordId: row!.id,
-        after: { attendant: person.name, method: input.method, amount: input.amount },
+        after: { attendant: person.name, method: method.name, amount: input.amount },
         ...(input.note ? { note: input.note } : {}),
         ip: req.ip,
       });
@@ -156,6 +160,7 @@ export const commissionRoutes: FastifyPluginAsync = async (app) => {
       if (!payout) throw notFound('That payout');
       if (payout.voidedAt) throw conflict('already_voided', 'That payout was already voided.');
       await assertDayOpen(tx, dayOf(payout.createdAt));
+      const [method] = await tx.select({ name: paymentMethods.name }).from(paymentMethods).where(eq(paymentMethods.id, payout.methodId));
       await tx.select().from(attendants).where(eq(attendants.id, payout.attendantId)).for('update');
       await tx.update(commissionPayouts).set({ voidedAt: new Date(), voidedBy: req.user!.id, voidReason: reason }).where(eq(commissionPayouts.id, id));
       await relinkPayouts(tx, payout.attendantId);
@@ -164,7 +169,7 @@ export const commissionRoutes: FastifyPluginAsync = async (app) => {
         action: 'commission.payout_void',
         recordTable: 'commission_payouts',
         recordId: id,
-        before: { method: payout.method, amount: payout.amount },
+        before: { method: method?.name, amount: payout.amount },
         note: reason,
         ip: req.ip,
       });

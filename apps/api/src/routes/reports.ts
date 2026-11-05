@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { REPORT_MAX_DAYS, reportQuery, type ReportDto } from '@niinas/shared';
 import { HttpError } from '../lib/errors.js';
+import { takingsBetween } from '../lib/methods.js';
 import { dayOf } from '../lib/dayLock.js';
 
 const DAY_MS = 86_400_000;
@@ -20,26 +21,21 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
     const hi = new Date(Date.parse(`${to}T00:00:00Z`) + DAY_MS).toISOString();
     const q = async <T extends Record<string, unknown>>(query: ReturnType<typeof sql>) => (await app.db.execute<T>(query)).rows;
 
-    const payRows = await q<{ day: string; cash: number; momo: number; n: number }>(sql`
-      select to_char(created_at at time zone 'UTC', 'YYYY-MM-DD') as day,
-             coalesce(sum(amount) filter (where method = 'cash'), 0)::int as cash,
-             coalesce(sum(amount) filter (where method = 'momo'), 0)::int as momo,
-             count(*)::int as n
-      from payments
-      where voided_at is null and created_at >= ${lo}::timestamptz and created_at < ${hi}::timestamptz
+    const payRows = await q<{ day: string; drawer: number; other: number }>(sql`
+      select to_char(p.created_at at time zone 'UTC', 'YYYY-MM-DD') as day,
+             coalesce(sum(p.amount) filter (where m.in_drawer), 0)::int as drawer,
+             coalesce(sum(p.amount) filter (where not m.in_drawer), 0)::int as other
+      from payments p
+      join payment_methods m on m.id = p.method_id
+      where p.voided_at is null and p.created_at >= ${lo}::timestamptz and p.created_at < ${hi}::timestamptz
       group by 1`);
     const byDay: ReportDto['byDay'] = [];
     for (let i = 0; i < days; i++) {
       const d = new Date(Date.parse(`${from}T00:00:00Z`) + i * DAY_MS).toISOString().slice(0, 10);
       const r = payRows.find((p) => p.day === d);
-      byDay.push({ day: d, cash: r?.cash ?? 0, momo: r?.momo ?? 0, total: (r?.cash ?? 0) + (r?.momo ?? 0) });
+      byDay.push({ day: d, drawer: r?.drawer ?? 0, other: r?.other ?? 0, total: (r?.drawer ?? 0) + (r?.other ?? 0) });
     }
-    const takings = {
-      cash: byDay.reduce((s, d) => s + d.cash, 0),
-      momo: byDay.reduce((s, d) => s + d.momo, 0),
-      total: byDay.reduce((s, d) => s + d.total, 0),
-      payments: payRows.reduce((s, r) => s + r.n, 0),
-    };
+    const takings = await takingsBetween(app.db, new Date(lo), new Date(hi));
 
     const [jobRow] = await q<{ count: number; sales: number; net: number; owing_count: number; owing_amount: number }>(sql`
       select count(*)::int as count,
@@ -78,22 +74,23 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
       group by a.id, a.name
       order by earned desc, a.name`);
 
-    const spentRows = await q<{ category: string; cash: number; momo: number; count: number; no_receipt: number }>(sql`
-      select category,
-             coalesce(sum(amount) filter (where method = 'cash'), 0)::int as cash,
-             coalesce(sum(amount) filter (where method = 'momo'), 0)::int as momo,
+    const spentRows = await q<{ category: string; drawer: number; other: number; count: number; no_receipt: number }>(sql`
+      select e.category,
+             coalesce(sum(e.amount) filter (where m.in_drawer), 0)::int as drawer,
+             coalesce(sum(e.amount) filter (where not m.in_drawer), 0)::int as other,
              count(*)::int as count,
-             count(*) filter (where receipt_file is null or btrim(receipt_file) = '')::int as no_receipt
-      from expenses
-      where voided_at is null and spent_on >= ${from}::date and spent_on <= ${to}::date
-      group by category`);
+             count(*) filter (where e.receipt_file is null or btrim(e.receipt_file) = '')::int as no_receipt
+      from expenses e
+      join payment_methods m on m.id = e.method_id
+      where e.voided_at is null and e.spent_on >= ${from}::date and e.spent_on <= ${to}::date
+      group by e.category`);
     const expenses = {
-      total: spentRows.reduce((s, r) => s + r.cash + r.momo, 0),
-      cash: spentRows.reduce((s, r) => s + r.cash, 0),
-      momo: spentRows.reduce((s, r) => s + r.momo, 0),
+      total: spentRows.reduce((s, r) => s + r.drawer + r.other, 0),
+      drawer: spentRows.reduce((s, r) => s + r.drawer, 0),
+      other: spentRows.reduce((s, r) => s + r.other, 0),
       withoutReceipt: spentRows.reduce((s, r) => s + r.no_receipt, 0),
       byCategory: spentRows
-        .map((r) => ({ category: r.category, amount: r.cash + r.momo, count: r.count }))
+        .map((r) => ({ category: r.category, amount: r.drawer + r.other, count: r.count }))
         .sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category)),
     };
 

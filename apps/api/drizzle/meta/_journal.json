@@ -57,6 +57,13 @@
       "when": 1793867780922,
       "tag": "0007_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793868687402,
+      "tag": "0008_payment_methods",
+      "breakpoints": true
     }
   ]
 }

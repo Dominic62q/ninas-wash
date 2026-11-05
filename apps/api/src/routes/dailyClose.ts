@@ -5,20 +5,18 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { can, closeInput, formatGHS, reasonInput, type DailyCloseHistory, type DailyCloseRow, type DaySummary, type Permission } from '@niinas/shared';
 import type { DbOrTx } from '../db/client.js';
-import { commissionPayouts, dailyCloses, expenses, jobs, payments, tipHandouts, tips, users } from '../db/schema.js';
+import { commissionPayouts, dailyCloses, expenses, jobs, paymentMethods, tipHandouts, tips, users } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
 import { dayOf, lockDayForClose } from '../lib/dayLock.js';
 import { HttpError, conflict, notFound } from '../lib/errors.js';
+import { drawerSplit, takingsBetween } from '../lib/methods.js';
 
 const dayParam = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick a date');
 
 const reopener = alias(users, 'reopener');
 
-/** Money in a column, summed, for one method or for all. Never null. */
-const total = (amount: PgColumn, method?: { col: PgColumn; is: 'cash' | 'momo' }): SQL<number> =>
-  method
-    ? sql<number>`coalesce(sum(${amount}) filter (where ${method.col} = ${method.is}), 0)::int`
-    : sql<number>`coalesce(sum(${amount}), 0)::int`;
+/** Money in a column, summed. Never null. */
+const total = (amount: PgColumn): SQL<number> => sql<number>`coalesce(sum(${amount}), 0)::int`;
 
 /** What went in and out of the drawer on a day. The same maths is used to show the day and to close it. */
 export async function figures(db: DbOrTx, day: string) {
@@ -26,14 +24,7 @@ export async function figures(db: DbOrTx, day: string) {
   const end = new Date(start.getTime() + 86_400_000);
   const during = (col: PgColumn) => and(gte(col, start), lt(col, end));
 
-  const [pay] = await db
-    .select({
-      cash: total(payments.amount, { col: payments.method, is: 'cash' }),
-      momo: total(payments.amount, { col: payments.method, is: 'momo' }),
-      n: sql<number>`count(*)::int`,
-    })
-    .from(payments)
-    .where(and(during(payments.createdAt), isNull(payments.voidedAt)));
+  const takings = await takingsBetween(db, start, end);
 
   // A held tip is cash the customer gave us to keep for the attendant, so it sits in the drawer until it is handed out.
   const [held] = await db
@@ -43,19 +34,15 @@ export async function figures(db: DbOrTx, day: string) {
   const [handouts] = await db.select({ amount: total(tipHandouts.amount) }).from(tipHandouts).where(during(tipHandouts.createdAt));
 
   const [spent] = await db
-    .select({
-      cash: total(expenses.amount, { col: expenses.method, is: 'cash' }),
-      momo: total(expenses.amount, { col: expenses.method, is: 'momo' }),
-    })
+    .select(drawerSplit(expenses.amount, paymentMethods.inDrawer))
     .from(expenses)
+    .innerJoin(paymentMethods, eq(paymentMethods.id, expenses.methodId))
     .where(and(eq(expenses.spentOn, day), isNull(expenses.voidedAt)));
 
   const [paid] = await db
-    .select({
-      cash: total(commissionPayouts.amount, { col: commissionPayouts.method, is: 'cash' }),
-      momo: total(commissionPayouts.amount, { col: commissionPayouts.method, is: 'momo' }),
-    })
+    .select(drawerSplit(commissionPayouts.amount, paymentMethods.inDrawer))
     .from(commissionPayouts)
+    .innerJoin(paymentMethods, eq(paymentMethods.id, commissionPayouts.methodId))
     .where(and(during(commissionPayouts.createdAt), isNull(commissionPayouts.voidedAt)));
 
   const owingResult = await db.execute<{ count: number; amount: number }>(sql`
@@ -76,17 +63,17 @@ export async function figures(db: DbOrTx, day: string) {
     .where(and(during(jobs.createdAt), isNull(jobs.voidedAt), inArray(jobs.status, ['pending', 'in_progress'])));
 
   const cash = {
-    paymentsIn: pay?.cash ?? 0,
+    paymentsIn: takings.drawer,
     heldTipsIn: held?.amount ?? 0,
-    expensesOut: spent?.cash ?? 0,
-    payoutsOut: paid?.cash ?? 0,
+    expensesOut: spent?.drawer ?? 0,
+    payoutsOut: paid?.drawer ?? 0,
     handoutsOut: handouts?.amount ?? 0,
   };
   const expectedBeforeFloat = cash.paymentsIn + cash.heldTipsIn - cash.expensesOut - cash.payoutsOut - cash.handoutsOut;
   return {
-    takings: { cash: pay?.cash ?? 0, momo: pay?.momo ?? 0, total: (pay?.cash ?? 0) + (pay?.momo ?? 0), payments: pay?.n ?? 0 },
+    takings,
     cash: { ...cash, expectedBeforeFloat },
-    momoOut: { expenses: spent?.momo ?? 0, payouts: paid?.momo ?? 0 },
+    otherOut: { expenses: spent?.other ?? 0, payouts: paid?.other ?? 0 },
     unpaid: { count: owing?.count ?? 0, amount: owing?.amount ?? 0 },
     notFinished: open?.n ?? 0,
   };
@@ -108,7 +95,7 @@ const closeRows = async (db: DbOrTx, where?: ReturnType<typeof and>, limit = 1):
     expectedCash: c.expectedCash,
     countedCash: c.countedCash,
     difference: c.difference ?? c.countedCash - c.expectedCash,
-    momoTotal: c.momoTotal,
+    otherTotal: c.otherTotal,
     note: c.note,
     closedBy: closer,
     closedAt: c.closedAt.toISOString(),
@@ -136,7 +123,7 @@ export async function summaryFor(db: DbOrTx, day: string, role: readonly Permiss
     locked,
     takings: f.takings,
     cash: sees || locked ? f.cash : null,
-    momoOut: f.momoOut,
+    otherOut: f.otherOut,
     unpaid: f.unpaid,
     notFinished: f.notFinished,
     suggestedFloat: before?.counted ?? null,
@@ -184,7 +171,7 @@ export const dailyCloseRoutes: FastifyPluginAsync = async (app) => {
         openingFloat: input.openingFloat,
         expectedCash: expected,
         countedCash: input.countedCash,
-        momoTotal: f.takings.momo,
+        otherTotal: f.takings.other,
         note: input.note,
         status: 'closed' as const,
         closedBy: req.user!.id,
@@ -203,7 +190,7 @@ export const dailyCloseRoutes: FastifyPluginAsync = async (app) => {
         action: existing ? 'dailyclose.reclose' : 'dailyclose.close',
         recordTable: 'daily_closes',
         recordId: id,
-        after: { day, openingFloat: input.openingFloat, expected, counted: input.countedCash, difference, momo: f.takings.momo },
+        after: { day, openingFloat: input.openingFloat, expected, counted: input.countedCash, difference, other: f.takings.other },
         ...(input.note ? { note: input.note } : {}),
         ip: req.ip,
       });

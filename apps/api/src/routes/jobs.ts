@@ -12,6 +12,7 @@ import {
   JOB_STATUSES,
   normalizePlate,
   paymentInput,
+  referenceProblem,
   splitEvenly,
   statusInput,
   voidInput,
@@ -21,12 +22,13 @@ import {
   type PaymentDto,
 } from '@niinas/shared';
 import type { DbOrTx } from '../db/client.js';
-import { attendants, auditLogs, customers, jobLineAttendants, jobLines, jobs, payments, services, users, vehicles } from '../db/schema.js';
+import { attendants, auditLogs, customers, jobLineAttendants, jobLines, jobs, paymentMethods, payments, services, users, vehicles } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
 import { earnCommissions, reverseCommissions } from '../lib/commissions.js';
 import { assertDayOpen, dayOf } from '../lib/dayLock.js';
 import { HttpError, conflict, notFound } from '../lib/errors.js';
 import { isUniqueViolation } from '../lib/helpers.js';
+import { activeMethod } from '../lib/methods.js';
 import { idParams } from '../lib/params.js';
 import { buildRows } from './customers.js';
 
@@ -84,11 +86,16 @@ async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null> {
   const names = new Map(
     (peopleIds.length ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, peopleIds)) : []).map((u) => [u.id, u.name]),
   );
+  const methodIds = [...new Set(paymentRows.map((p) => p.methodId))];
+  const methodNames = new Map(
+    (methodIds.length ? await db.select({ id: paymentMethods.id, name: paymentMethods.name }).from(paymentMethods).where(inArray(paymentMethods.id, methodIds)) : []).map((m) => [m.id, m.name]),
+  );
   const paymentList: PaymentDto[] = paymentRows.map((p) => ({
     id: p.id,
-    method: p.method,
+    methodId: p.methodId,
+    method: methodNames.get(p.methodId) ?? 'Unknown',
     amount: p.amount,
-    momoReference: p.momoReference,
+    reference: p.reference,
     at: p.createdAt.toISOString(),
     by: names.get(p.recordedBy) ?? 'Someone',
     voided: p.voidedAt ? { at: p.voidedAt.toISOString(), by: names.get(p.voidedBy!) ?? 'Someone', reason: p.voidReason ?? '' } : null,
@@ -620,19 +627,22 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         return false;
       }
       await assertDayOpen(tx, dayOf());
+      const method = await activeMethod(tx, input.methodId);
+      const missing = referenceProblem(method, input.reference);
+      if (missing) throw new HttpError(400, 'reference_needed', missing);
       const owed = Math.max((await subtotalOf(tx, id)) - job.discount, 0) - (await paidOf(tx, id));
       if (owed <= 0) throw conflict('nothing_owed', 'Nothing is owed on this job.');
       if (input.amount > owed) throw new HttpError(400, 'too_much', `Only ${formatGHS(owed)} is still owed.`);
       const [row] = await tx
         .insert(payments)
-        .values({ jobId: id, method: input.method, amount: input.amount, momoReference: input.momoReference, idemKey: input.idemKey, recordedBy: req.user!.id })
+        .values({ jobId: id, methodId: method.id, amount: input.amount, reference: input.reference, idemKey: input.idemKey, recordedBy: req.user!.id })
         .returning();
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'payment.record',
         recordTable: 'payments',
         recordId: row!.id,
-        after: { method: input.method, amount: input.amount, momoReference: input.momoReference },
+        after: { method: method.name, amount: input.amount, reference: input.reference },
         ip: req.ip,
       });
       return true;
@@ -653,13 +663,14 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       if (!payment) throw notFound('That payment');
       if (payment.voidedAt) throw conflict('already_voided', 'That payment was already voided.');
       await assertDayOpen(tx, dayOf(payment.createdAt));
+      const [method] = await tx.select({ name: paymentMethods.name }).from(paymentMethods).where(eq(paymentMethods.id, payment.methodId));
       await tx.update(payments).set({ voidedAt: new Date(), voidedBy: req.user!.id, voidReason: reason }).where(eq(payments.id, paymentId));
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'payment.void',
         recordTable: 'payments',
         recordId: paymentId,
-        before: { method: payment.method, amount: payment.amount },
+        before: { method: method?.name, amount: payment.amount },
         note: reason,
         ip: req.ip,
       });

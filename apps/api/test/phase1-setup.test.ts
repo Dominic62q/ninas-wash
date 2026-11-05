@@ -411,10 +411,10 @@ describe('customers and vehicles', () => {
        values ($1, (select id from services limit 1), 5000, 'percent', 1800)`,
       [job!.id],
     );
-    await db.insert(payments).values({ jobId: job!.id, amount: 3000, method: 'cash', idemKey: 'p1-pay-1', recordedBy: cashierId });
+    await db.insert(payments).values({ jobId: job!.id, amount: 3000, methodId: 1, idemKey: 'p1-pay-1', recordedBy: cashierId });
     const [voided] = await db
       .insert(payments)
-      .values({ jobId: job!.id, amount: 1000, method: 'cash', idemKey: 'p1-pay-2', recordedBy: cashierId })
+      .values({ jobId: job!.id, amount: 1000, methodId: 1, idemKey: 'p1-pay-2', recordedBy: cashierId })
       .returning();
     await db.update(payments).set({ voidedAt: new Date(), voidedBy: managerId, voidReason: 'test' }).where(eq(payments.id, voided!.id));
 

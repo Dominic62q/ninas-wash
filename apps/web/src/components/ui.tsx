@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { formatGHS } from '@niinas/shared';
+import { formatGHS, type Takings } from '@niinas/shared';
 import { ApiError } from '../lib/api';
 import { plural } from '../lib/format';
 
@@ -85,10 +85,10 @@ export function FormError({ message }: { message: string | null | undefined }) {
   );
 }
 
-export function Check({ label, checked, onChange, hint }: { label: string; checked: boolean; onChange: (v: boolean) => void; hint?: string }) {
+export function Check({ label, checked, onChange, hint, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; hint?: string; disabled?: boolean }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-blue" />
+    <label className={`flex items-start gap-3 ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-blue" />
       <span className="flex flex-col">
         <span className="text-sm font-medium text-ink">{label}</span>
         {hint && <span className="text-xs text-ink-3">{hint}</span>}
@@ -167,8 +167,8 @@ export function Strip({ items, roomy, compact }: { items: { label: string; short
   );
 }
 
-/** The day's takings: the total big, cash and MoMo underneath, every amount with room to read. */
-export function TakingsCard({ takings, label = 'Taken' }: { takings: { cash: number; momo: number; total: number; payments: number }; label?: string }) {
+/** The day's takings: the total big, each way of paying underneath, every amount with room to read. */
+export function TakingsCard({ takings, label = 'Taken' }: { takings: Takings; label?: string }) {
   return (
     <section aria-label="Takings" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
       <div className="flex items-baseline justify-between gap-3 px-4 pb-2 pt-3">
@@ -177,14 +177,16 @@ export function TakingsCard({ takings, label = 'Taken' }: { takings: { cash: num
         </p>
         <p className="display num text-[24px] leading-none text-navy lg:text-[28px]">{formatGHS(takings.total)}</p>
       </div>
-      <div className="grid grid-cols-2 border-t border-line text-sm">
-        <p className="flex items-baseline justify-between gap-2 px-4 py-2 text-ink-2">
-          Cash <span className="num font-semibold text-ink">{formatGHS(takings.cash)}</span>
-        </p>
-        <p className="flex items-baseline justify-between gap-2 border-l border-line px-4 py-2 text-ink-2">
-          MoMo <span className="num font-semibold text-ink">{formatGHS(takings.momo)}</span>
-        </p>
-      </div>
+      {takings.byMethod.length > 0 && (
+        <ul className="grid grid-cols-2 border-t border-line text-sm">
+          {takings.byMethod.map((m, i) => (
+            <li key={m.methodId} className={`flex items-baseline justify-between gap-2 px-4 py-2 text-ink-2 ${i % 2 === 1 ? 'border-l border-line' : ''}`}>
+              <span className="truncate">{m.name}</span>
+              <span className="num font-semibold text-ink">{formatGHS(m.amount)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

@@ -44,15 +44,15 @@ const daysAgo = (n: number) => dayOf(new Date(Date.now() - n * 86_400_000));
 const TODAY = () => dayOf();
 
 const expense = (who: string, body: Record<string, unknown> = {}) =>
-  call(who, 'POST', '/api/expenses', { category: 'Water', amount: 1000, method: 'cash', idemKey: newKey(), ...body });
+  call(who, 'POST', '/api/expenses', { category: 'Water', amount: 1000, methodId: 1, idemKey: newKey(), ...body });
 const summary = async (who: string, day?: string) =>
   (await call(who, 'GET', `/api/daily-close${day ? `?day=${day}` : ''}`)).json().summary as {
     day: string;
     locked: boolean;
     close: { status: string; expectedCash: number; countedCash: number; difference: number; note: string | null; openingFloat: number; reopened: { reason: string } | null } | null;
-    takings: { cash: number; momo: number; total: number };
+    takings: { drawer: number; other: number; total: number };
     cash: { paymentsIn: number; heldTipsIn: number; expensesOut: number; payoutsOut: number; handoutsOut: number; expectedBeforeFloat: number } | null;
-    momoOut: { expenses: number; payouts: number };
+    otherOut: { expenses: number; payouts: number };
     unpaid: { count: number; amount: number };
     suggestedFloat: number | null;
   };
@@ -70,7 +70,7 @@ async function finishedJob(): Promise<number> {
   return id;
 }
 const pay = (jobId: number, body: Record<string, unknown> = {}) =>
-  call(cashier, 'POST', `/api/jobs/${jobId}/payments`, { method: 'cash', amount: 1000, idemKey: newKey(), ...body });
+  call(cashier, 'POST', `/api/jobs/${jobId}/payments`, { methodId: 1, amount: 1000, idemKey: newKey(), ...body });
 
 beforeAll(async () => {
   app = await buildApp({ db, config });
@@ -91,10 +91,10 @@ afterAll(async () => {
 
 describe('writing down an expense', () => {
   it('lets a cashier add one, and saves it once however many times the form is sent', async () => {
-    const body = { category: 'Soap & chemicals', amount: 2550, method: 'cash', receipt: 'R-1001', idemKey: newKey() };
+    const body = { category: 'Soap & chemicals', amount: 2550, methodId: 1, receipt: 'R-1001', idemKey: newKey() };
     const first = await call(cashier, 'POST', '/api/expenses', body);
     expect(first.statusCode).toBe(201);
-    expect(first.json().expense).toMatchObject({ category: 'Soap & chemicals', amount: 2550, method: 'cash', receipt: 'R-1001', spentOn: TODAY(), voided: null });
+    expect(first.json().expense).toMatchObject({ category: 'Soap & chemicals', amount: 2550, methodId: 1, receipt: 'R-1001', spentOn: TODAY(), voided: null });
     const again = await call(cashier, 'POST', '/api/expenses', body);
     expect(again.statusCode).toBe(200);
     expect(again.json().expense.id).toBe(first.json().expense.id);
@@ -106,7 +106,7 @@ describe('writing down an expense', () => {
     expect((await expense(cashier, { amount: 0 })).statusCode).toBe(400);
     expect((await expense(cashier, { amount: 12.5 })).statusCode).toBe(400);
     expect((await expense(cashier, { category: 'Gold plating' })).statusCode).toBe(400);
-    expect((await expense(cashier, { method: 'cheque' })).statusCode).toBe(400);
+    expect((await expense(cashier, { methodId: 99999 })).statusCode).toBe(404);
     expect((await expense(cashier, { category: 'Other' })).statusCode).toBe(400); // "Other" must say what for
     expect((await expense(cashier, { category: 'Other', note: 'Gate padlock' })).statusCode).toBe(201);
   });
@@ -131,18 +131,18 @@ describe('writing down an expense', () => {
   });
 
   it('needs someone signed in', async () => {
-    const res = await app.inject({ method: 'POST', url: '/api/expenses', payload: { category: 'Water', amount: 100, method: 'cash', idemKey: newKey() } });
+    const res = await app.inject({ method: 'POST', url: '/api/expenses', payload: { category: 'Water', amount: 100, methodId: 1, idemKey: newKey() } });
     expect(res.statusCode).toBe(401);
   });
 
   it('adds up cash and MoMo apart, and leaves voided ones out', async () => {
     const day = daysAgo(6);
-    await expense(cashier, { spentOn: day, amount: 1000, method: 'cash', receipt: 'a' });
-    await expense(cashier, { spentOn: day, amount: 400, method: 'momo', receipt: 'b' });
-    const wrong = (await expense(cashier, { spentOn: day, amount: 9999, method: 'cash', receipt: 'c' })).json().expense.id as number;
+    await expense(cashier, { spentOn: day, amount: 1000, methodId: 1, receipt: 'a' });
+    await expense(cashier, { spentOn: day, amount: 400, methodId: 2, receipt: 'b' });
+    const wrong = (await expense(cashier, { spentOn: day, amount: 9999, methodId: 1, receipt: 'c' })).json().expense.id as number;
     expect((await call(manager, 'POST', `/api/expenses/${wrong}/void`, { reason: 'Typed the wrong amount' })).statusCode).toBe(200);
     const list = (await call(manager, 'GET', `/api/expenses?from=${day}&to=${day}`)).json();
-    expect(list).toMatchObject({ sum: 1400, cashSum: 1000, momoSum: 400 });
+    expect(list).toMatchObject({ sum: 1400, drawerSum: 1000, otherSum: 400 });
     expect(list.expenses).toHaveLength(3);
     expect(list.expenses.find((e: { id: number }) => e.id === wrong).voided).toMatchObject({ reason: 'Typed the wrong amount' });
   });
@@ -165,25 +165,25 @@ describe("the day's figures", () => {
     const before = await summary(manager);
     const job = await finishedJob();
     await pay(job, { amount: 3000 });
-    await pay(job, { method: 'momo', amount: 2000, momoReference: 'MP260101.1234.A12345' });
+    await pay(job, { methodId: 2, amount: 2000, reference: 'MP260101.1234.A12345' });
     await call(cashier, 'POST', '/api/tips', { attendantId, kind: 'held', amount: 700, idemKey: newKey() });
     await call(cashier, 'POST', '/api/tips', { attendantId, kind: 'direct', amount: 5000, idemKey: newKey() }); // never in the drawer
-    await expense(cashier, { amount: 450, method: 'cash', receipt: 'x' });
-    await expense(cashier, { amount: 800, method: 'momo', receipt: 'y' }); // MoMo leaves the drawer alone
-    await call(manager, 'POST', '/api/commissions/payouts', { attendantId, amount: 200, method: 'cash', idemKey: newKey() });
+    await expense(cashier, { amount: 450, methodId: 1, receipt: 'x' });
+    await expense(cashier, { amount: 800, methodId: 2, receipt: 'y' }); // MoMo leaves the drawer alone
+    await call(manager, 'POST', '/api/commissions/payouts', { attendantId, amount: 200, methodId: 1, idemKey: newKey() });
     await call(manager, 'POST', '/api/tips/handouts', { attendantId });
 
     const after = await summary(manager);
     const handed = 700; // everything held for this attendant, who had nothing held before
-    expect(after.takings.cash - before.takings.cash).toBe(3000);
-    expect(after.takings.momo - before.takings.momo).toBe(2000);
+    expect(after.takings.drawer - before.takings.drawer).toBe(3000);
+    expect(after.takings.other - before.takings.other).toBe(2000);
     expect(after.takings.total - before.takings.total).toBe(5000);
     expect(after.cash!.paymentsIn - before.cash!.paymentsIn).toBe(3000);
     expect(after.cash!.heldTipsIn - before.cash!.heldTipsIn).toBe(700);
     expect(after.cash!.expensesOut - before.cash!.expensesOut).toBe(450);
     expect(after.cash!.payoutsOut - before.cash!.payoutsOut).toBe(200);
     expect(after.cash!.handoutsOut - before.cash!.handoutsOut).toBe(handed);
-    expect(after.momoOut.expenses - before.momoOut.expenses).toBe(800);
+    expect(after.otherOut.expenses - before.otherOut.expenses).toBe(800);
     expect(after.cash!.expectedBeforeFloat - before.cash!.expectedBeforeFloat).toBe(3000 + 700 - 450 - 200 - handed);
     expect(after.unpaid.amount - before.unpaid.amount).toBe(0); // the job is paid in full
   });
@@ -338,10 +338,10 @@ describe('closing today', () => {
     const job = await finishedJob();
     const saved = await pay(job, { amount: 1000 });
     const paymentId = saved.json().job.payments[0].id as number;
-    const second = { method: 'cash', amount: 2000, idemKey: newKey() };
+    const second = { methodId: 1, amount: 2000, idemKey: newKey() };
     expect((await call(cashier, 'POST', `/api/jobs/${job}/payments`, second)).statusCode).toBe(201);
     await call(cashier, 'POST', '/api/tips', { attendantId, kind: 'held', amount: 300, idemKey: newKey() });
-    await call(manager, 'POST', '/api/commissions/payouts', { attendantId, amount: 100, method: 'cash', idemKey: newKey() });
+    await call(manager, 'POST', '/api/commissions/payouts', { attendantId, amount: 100, methodId: 1, idemKey: newKey() });
 
     // Count exactly what the drawer should hold, with a float of GH₵30.00.
     const s = await summary(manager);
@@ -358,7 +358,7 @@ describe('closing today', () => {
     await refused(await call(manager, 'POST', `/api/jobs/${job}/payments/${paymentId}/void`, { reason: 'Trying to change the past' }));
     await refused(await call(cashier, 'POST', '/api/tips', { attendantId, kind: 'held', amount: 100, idemKey: newKey() }));
     await refused(await call(manager, 'POST', '/api/tips/handouts', { attendantId }));
-    await refused(await call(manager, 'POST', '/api/commissions/payouts', { attendantId, amount: 50, method: 'cash', idemKey: newKey() }));
+    await refused(await call(manager, 'POST', '/api/commissions/payouts', { attendantId, amount: 50, methodId: 1, idemKey: newKey() }));
     await refused(await expense(cashier, { receipt: 'too late' }));
 
     // A direct tip never touches the drawer, and sending the same form again still just says "saved".

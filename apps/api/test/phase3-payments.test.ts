@@ -46,7 +46,7 @@ type Detail = {
   total: number;
   paid: number;
   balance: number;
-  payments: { id: number; method: string; amount: number; momoReference: string | null; voided: unknown }[];
+  payments: { id: number; methodId: number; method: string; amount: number; reference: string | null; voided: unknown }[];
   dispatchedAt: string | null;
   dispatchOverride: { by: string; note: string } | null;
   history: { action: string; note: string | null }[];
@@ -89,7 +89,7 @@ describe('taking payments', () => {
   it('records cash, shows paid and balance, and logs who took it', async () => {
     const job = await finishedJob();
     expect(job).toMatchObject({ total: 5000, paid: 0, balance: 5000 });
-    const res = await pay(cashier, job.id, { method: 'cash', amount: 2000 });
+    const res = await pay(cashier, job.id, { methodId: 1, amount: 2000 });
     expect(res.statusCode).toBe(201);
     const after = res.json().job as Detail;
     expect(after).toMatchObject({ paid: 2000, balance: 3000 });
@@ -99,49 +99,49 @@ describe('taking payments', () => {
 
   it('splits one job across cash and MoMo, and MoMo needs a reference', async () => {
     const job = await finishedJob();
-    const noRef = await pay(cashier, job.id, { method: 'momo', amount: 3000 });
+    const noRef = await pay(cashier, job.id, { methodId: 2, amount: 3000 });
     expect(noRef.statusCode).toBe(400);
-    await pay(cashier, job.id, { method: 'cash', amount: 2000 });
-    const momo = await pay(cashier, job.id, { method: 'momo', amount: 3000, momoReference: 'MP261030.0001' });
+    await pay(cashier, job.id, { methodId: 1, amount: 2000 });
+    const momo = await pay(cashier, job.id, { methodId: 2, amount: 3000, reference: 'MP261030.0001' });
     expect(momo.json().job).toMatchObject({ paid: 5000, balance: 0 });
-    expect(momo.json().job.payments.map((p: { method: string }) => p.method)).toEqual(['cash', 'momo']);
+    expect(momo.json().job.payments.map((p: { method: string }) => p.method)).toEqual(['Cash', 'MoMo']);
   });
 
   it('saves once when the same request arrives twice', async () => {
     const job = await finishedJob();
     const idemKey = newKey();
-    const first = await call(cashier, 'POST', `/api/jobs/${job.id}/payments`, { method: 'cash', amount: 1000, idemKey });
-    const second = await call(cashier, 'POST', `/api/jobs/${job.id}/payments`, { method: 'cash', amount: 1000, idemKey });
+    const first = await call(cashier, 'POST', `/api/jobs/${job.id}/payments`, { methodId: 1, amount: 1000, idemKey });
+    const second = await call(cashier, 'POST', `/api/jobs/${job.id}/payments`, { methodId: 1, amount: 1000, idemKey });
     expect(first.statusCode).toBe(201);
     expect(second.statusCode).toBe(200);
     expect((await jobOf(job.id)).payments).toHaveLength(1);
     const other = await finishedJob();
-    expect((await call(cashier, 'POST', `/api/jobs/${other.id}/payments`, { method: 'cash', amount: 1000, idemKey })).statusCode).toBe(409);
+    expect((await call(cashier, 'POST', `/api/jobs/${other.id}/payments`, { methodId: 1, amount: 1000, idemKey })).statusCode).toBe(409);
   });
 
   it('refuses more than is owed, and nothing once it is paid', async () => {
     const job = await finishedJob();
-    const over = await pay(cashier, job.id, { method: 'cash', amount: 5001 });
+    const over = await pay(cashier, job.id, { methodId: 1, amount: 5001 });
     expect(over.statusCode).toBe(400);
     expect(over.json().error.message).toMatch(/Only .* is still owed/);
-    await pay(cashier, job.id, { method: 'cash', amount: 5000 });
-    expect((await pay(cashier, job.id, { method: 'cash', amount: 100 })).statusCode).toBe(409);
-    expect((await pay(cashier, job.id, { method: 'cash', amount: 0 })).statusCode).toBe(400);
+    await pay(cashier, job.id, { methodId: 1, amount: 5000 });
+    expect((await pay(cashier, job.id, { methodId: 1, amount: 100 })).statusCode).toBe(409);
+    expect((await pay(cashier, job.id, { methodId: 1, amount: 0 })).statusCode).toBe(400);
   });
 
   it('can be taken before the wash starts, but not on a voided job', async () => {
     const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [ama] }] });
     const id = made.json().job.id as number;
-    expect((await pay(cashier, id, { method: 'cash', amount: 1000 })).statusCode).toBe(201);
+    expect((await pay(cashier, id, { methodId: 1, amount: 1000 })).statusCode).toBe(201);
     await call(manager, 'POST', `/api/jobs/${id}/payments/${(await jobOf(id)).payments[0]!.id}/void`, { reason: 'Customer changed mind' });
     await call(manager, 'POST', `/api/jobs/${id}/void`, { reason: 'Booked on the wrong car' });
-    expect((await pay(cashier, id, { method: 'cash', amount: 1000 })).statusCode).toBe(409);
+    expect((await pay(cashier, id, { methodId: 1, amount: 1000 })).statusCode).toBe(409);
   });
 
   it('will not let a discount take the total below what was paid', async () => {
     const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [ama] }] });
     const id = made.json().job.id as number;
-    await pay(cashier, id, { method: 'cash', amount: 4000 });
+    await pay(cashier, id, { methodId: 1, amount: 4000 });
     const res = await call(cashier, 'PATCH', `/api/jobs/${id}`, { discount: 2000 }); // total would be 3000, 4000 paid
     expect(res.statusCode).toBe(400);
     expect((await call(cashier, 'PATCH', `/api/jobs/${id}`, { discount: 1000 })).statusCode).toBe(200);
@@ -151,7 +151,7 @@ describe('taking payments', () => {
 describe('voiding a payment', () => {
   it('is for managers and owners, needs a reason, and gives the balance back', async () => {
     const job = await finishedJob();
-    const paid = (await pay(cashier, job.id, { method: 'cash', amount: 5000 })).json().job as Detail;
+    const paid = (await pay(cashier, job.id, { methodId: 1, amount: 5000 })).json().job as Detail;
     const paymentId = paid.payments[0]!.id;
     expect((await call(cashier, 'POST', `/api/jobs/${job.id}/payments/${paymentId}/void`, { reason: 'Typed it wrong' })).statusCode).toBe(403);
     expect((await call(manager, 'POST', `/api/jobs/${job.id}/payments/${paymentId}/void`, { reason: '' })).statusCode).toBe(400);
@@ -177,7 +177,7 @@ describe('dispatching the car', () => {
 
   it('lets a paid car go, once', async () => {
     const job = await finishedJob();
-    await pay(cashier, job.id, { method: 'cash', amount: 5000 });
+    await pay(cashier, job.id, { methodId: 1, amount: 5000 });
     const res = await call(cashier, 'POST', `/api/jobs/${job.id}/dispatch`, {});
     expect(res.statusCode).toBe(200);
     expect(res.json().job).toMatchObject({ status: 'dispatched', dispatchOverride: null });
@@ -187,7 +187,7 @@ describe('dispatching the car', () => {
 
   it('holds the car while money is owed, unless a manager releases it with a note', async () => {
     const job = await finishedJob();
-    await pay(cashier, job.id, { method: 'cash', amount: 2000 });
+    await pay(cashier, job.id, { methodId: 1, amount: 2000 });
 
     const cashierTry = await call(cashier, 'POST', `/api/jobs/${job.id}/dispatch`, { note: 'He will pay tomorrow' });
     expect(cashierTry.statusCode).toBe(403);
@@ -211,14 +211,14 @@ describe('dispatching the car', () => {
     const owing = (await call(cashier, 'GET', '/api/jobs?status=owing&limit=100')).json().jobs as { id: number; paid: number; total: number }[];
     expect(owing.find((j) => j.id === job.id)).toMatchObject({ paid: 0, total: 5000 });
 
-    expect((await pay(cashier, job.id, { method: 'cash', amount: 5000 })).json().job).toMatchObject({ status: 'dispatched', balance: 0 });
+    expect((await pay(cashier, job.id, { methodId: 1, amount: 5000 })).json().job).toMatchObject({ status: 'dispatched', balance: 0 });
     const after = (await call(cashier, 'GET', '/api/jobs?status=owing&limit=100')).json().jobs as { id: number }[];
     expect(after.find((j) => j.id === job.id)).toBeUndefined();
   });
 
   it('takes a dispatched job off the board, and the board carries what has been paid', async () => {
     const job = await finishedJob();
-    await pay(cashier, job.id, { method: 'cash', amount: 1500 });
+    await pay(cashier, job.id, { methodId: 1, amount: 1500 });
     const card = (await call(cashier, 'GET', '/api/jobs/board')).json().jobs.find((j: { id: number }) => j.id === job.id);
     expect(card).toMatchObject({ status: 'completed', total: 5000, paid: 1500 });
     await call(manager, 'POST', `/api/jobs/${job.id}/dispatch`, { note: 'Pays later' });
@@ -229,7 +229,7 @@ describe('dispatching the car', () => {
 
   it('cannot void a job that has payments', async () => {
     const job = await finishedJob();
-    await pay(cashier, job.id, { method: 'cash', amount: 1000 });
+    await pay(cashier, job.id, { methodId: 1, amount: 1000 });
     expect((await call(manager, 'POST', `/api/jobs/${job.id}/void`, { reason: 'Trying to hide it' })).statusCode).toBe(409);
   });
 });

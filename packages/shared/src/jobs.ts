@@ -56,21 +56,15 @@ export const discountInput = z.object({ discount: discountField });
 /** Jobs only move forward. Handing the car over is its own step (dispatch), below. */
 export const statusInput = z.object({ to: z.enum(['in_progress', 'completed']) });
 
-export const PAY_METHODS = ['cash', 'momo'] as const;
-export type PayMethod = (typeof PAY_METHODS)[number];
-
-/** One payment. Several can be taken on a job (part cash, part MoMo). */
-export const paymentInput = z
-  .object({
-    method: z.enum(PAY_METHODS),
-    /** Pesewas. */
-    amount: z.number().int('Use whole pesewas').positive('Enter an amount').max(100_000_000),
-    momoReference: z.string().trim().max(40).nullish().transform((v) => v || null),
-    /** Made once per payment form. A double-tap or a retry carries the same key, so it saves once. */
-    idemKey: z.string().trim().min(8).max(64),
-  })
-  .refine((p) => p.method !== 'momo' || p.momoReference !== null, { path: ['momoReference'], message: 'Enter the MoMo reference' })
-  .transform((p) => (p.method === 'cash' ? { ...p, momoReference: null } : p));
+/** One payment. Several can be taken on a job (part cash, part MoMo). Whether a reference is needed depends on the method. */
+export const paymentInput = z.object({
+  methodId: z.number().int().positive('Pick how it was paid'),
+  /** Pesewas. */
+  amount: z.number().int('Use whole pesewas').positive('Enter an amount').max(100_000_000),
+  reference: z.string().trim().max(40).nullish().transform((v) => v || null),
+  /** Made once per payment form. A double-tap or a retry carries the same key, so it saves once. */
+  idemKey: z.string().trim().min(8).max(64),
+});
 export type PaymentInput = z.infer<typeof paymentInput>;
 
 /** The note is only needed when the car leaves with money still owed. */

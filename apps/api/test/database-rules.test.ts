@@ -56,31 +56,28 @@ describe('the audit log', () => {
 describe('payments', () => {
   const base = () => ({ jobId, recordedBy: userId });
 
-  it('needs a MoMo reference for MoMo and none for cash', async () => {
-    expect(
-      await refusedWith(() => db.insert(payments).values({ ...base(), method: 'momo', amount: 500, idemKey: 'k-momo-1' })),
-    ).toMatch(/payments_momo_needs_reference/);
+  it('never keeps a blank reference (the method decides whether one is needed, the API checks that)', async () => {
     expect(
       await refusedWith(() =>
-        db.insert(payments).values({ ...base(), method: 'momo', amount: 500, momoReference: '   ', idemKey: 'k-momo-2' }),
+        db.insert(payments).values({ ...base(), methodId: 2, amount: 500, reference: '   ', idemKey: 'k-momo-2' }),
       ),
-    ).toMatch(/payments_momo_needs_reference/);
+    ).toMatch(/payments_reference_not_blank/);
 
-    await db.insert(payments).values({ ...base(), method: 'momo', amount: 500, momoReference: 'MP260101.1234', idemKey: 'k-momo-3' });
-    await db.insert(payments).values({ ...base(), method: 'cash', amount: 500, idemKey: 'k-cash-1' });
+    await db.insert(payments).values({ ...base(), methodId: 2, amount: 500, reference: 'MP260101.1234', idemKey: 'k-momo-3' });
+    await db.insert(payments).values({ ...base(), methodId: 1, amount: 500, idemKey: 'k-cash-1' });
   });
 
   it('saves once when the same request arrives twice (idempotency key)', async () => {
-    await db.insert(payments).values({ ...base(), method: 'cash', amount: 700, idemKey: 'k-double-tap' });
+    await db.insert(payments).values({ ...base(), methodId: 1, amount: 700, idemKey: 'k-double-tap' });
     expect(
-      await refusedWith(() => db.insert(payments).values({ ...base(), method: 'cash', amount: 700, idemKey: 'k-double-tap' })),
+      await refusedWith(() => db.insert(payments).values({ ...base(), methodId: 1, amount: 700, idemKey: 'k-double-tap' })),
     ).toMatch(/duplicate key|payments_idem_key/);
   });
 
   it('refuses zero and negative amounts', async () => {
     for (const amount of [0, -100]) {
       expect(
-        await refusedWith(() => db.insert(payments).values({ ...base(), method: 'cash', amount, idemKey: `k-bad-${amount}` })),
+        await refusedWith(() => db.insert(payments).values({ ...base(), methodId: 1, amount, idemKey: `k-bad-${amount}` })),
       ).toMatch(/payments_amount_positive/);
     }
   });
@@ -88,20 +85,20 @@ describe('payments', () => {
   it('never add up to more than the job costs', async () => {
     // GH₵17 is already paid of GH₵100, so GH₵83 is left.
     expect(
-      await refusedWith(() => db.insert(payments).values({ ...base(), method: 'cash', amount: 8_400, idemKey: 'k-over-1' })),
+      await refusedWith(() => db.insert(payments).values({ ...base(), methodId: 1, amount: 8_400, idemKey: 'k-over-1' })),
     ).toMatch(/more than the job costs/);
-    await db.insert(payments).values({ ...base(), method: 'cash', amount: 8_300, idemKey: 'k-exact-1' });
+    await db.insert(payments).values({ ...base(), methodId: 1, amount: 8_300, idemKey: 'k-exact-1' });
     expect(
-      await refusedWith(() => db.insert(payments).values({ ...base(), method: 'cash', amount: 1, idemKey: 'k-over-2' })),
+      await refusedWith(() => db.insert(payments).values({ ...base(), methodId: 1, amount: 1, idemKey: 'k-over-2' })),
     ).toMatch(/more than the job costs/);
     // Voiding it gives the balance back.
     await db.execute(sql`update payments set voided_at = now(), voided_by = ${userId}, void_reason = 'Test undo' where idem_key = 'k-exact-1'`);
-    await db.insert(payments).values({ ...base(), method: 'cash', amount: 100, idemKey: 'k-after-void' });
+    await db.insert(payments).values({ ...base(), methodId: 1, amount: 100, idemKey: 'k-after-void' });
   });
 
   it('cannot be edited, only voided, and a voided one stays voided', async () => {
     expect(await refusedWith(() => db.execute(sql`update payments set amount = 1 where idem_key = 'k-after-void'`))).toMatch(/cannot be edited/);
-    expect(await refusedWith(() => db.execute(sql`update payments set method = 'momo' where idem_key = 'k-after-void'`))).toMatch(/cannot be edited/);
+    expect(await refusedWith(() => db.execute(sql`update payments set method_id = 2 where idem_key = 'k-after-void'`))).toMatch(/cannot be edited/);
     expect(await refusedWith(() => db.execute(sql`update payments set void_reason = 'changed' where idem_key = 'k-exact-1'`))).toMatch(/voided payment cannot be changed/);
   });
 

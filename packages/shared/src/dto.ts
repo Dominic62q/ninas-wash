@@ -168,9 +168,11 @@ export interface JobHistoryEntry {
 
 export interface PaymentDto {
   id: number;
-  method: 'cash' | 'momo';
+  methodId: number;
+  /** The method's name. */
+  method: string;
   amount: number;
-  momoReference: string | null;
+  reference: string | null;
   at: string;
   by: string;
   voided: { at: string; by: string; reason: string } | null;
@@ -212,7 +214,8 @@ export type LedgerEntry =
       id: number;
       at: string;
       amount: number;
-      method: 'cash' | 'momo';
+      methodId: number;
+      method: string;
       by: string;
       note: string | null;
       voided: { at: string; by: string; reason: string } | null;

@@ -236,7 +236,7 @@ function CloseForm({ summary }: { summary: DaySummary }) {
           <p role="note" className="bg-band px-3 py-2.5 text-sm text-ink-2 max-lg:rounded-[10px]">
             {tip === 'start'
               ? `The cash that was in the drawer when the day began, like change. ${summary.suggestedFloat !== null ? 'It is filled in from the last close, so change it only if you started with a different amount. ' : ''}Use 0 if it was empty.`
-              : 'Count all the cash in the drawer right now, notes and coins. Do not count MoMo.'}
+              : 'Count all the cash in the drawer right now, notes and coins. Leave out MoMo and anything paid another way.'}
           </p>
         )}
         <NoteCounter

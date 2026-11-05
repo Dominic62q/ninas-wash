@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
-import { EXPENSE_CATEGORIES, expenseInput, formatGHS, parseGHS, reasonInput, type ExpenseDto, type ExpensesOverview } from '@niinas/shared';
+import { EXPENSE_CATEGORIES, expenseInput, formatGHS, parseGHS, reasonInput, type ExpenseDto, type ExpensesOverview, type PayMethodDto } from '@niinas/shared';
 import { Select } from '../components/Dropdown';
+import { MethodPicker } from '../components/PaymentBits';
 import { useToast } from '../components/Toast';
-import { Choice, EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, Strip, errorMessage } from '../components/ui';
+import { EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, Strip, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
+import { useActiveMethods } from '../lib/useMethods';
 import { useAuth } from '../lib/auth';
 import { addDays, clock, dayName, newKey, plural, ymd } from '../lib/format';
 
@@ -15,10 +17,6 @@ const RANGES = [
 ] as const;
 type Range = (typeof RANGES)[number]['value'];
 
-const METHOD_OPTIONS = [
-  { value: 'cash' as const, label: 'Cash' },
-  { value: 'momo' as const, label: 'MoMo' },
-];
 
 /** Today and the six days before it, the days an expense can be written down on. */
 const dayOptions = (closed: string[]) =>
@@ -31,7 +29,9 @@ function AddExpensePanel({ open, onClose, closedDays }: { open: boolean; onClose
   const queryClient = useQueryClient();
   const toast = useToast();
   const [category, setCategory] = useState('Water');
-  const [method, setMethod] = useState<'cash' | 'momo'>('cash');
+  const { first } = useActiveMethods();
+  const [picked, setPicked] = useState<PayMethodDto | null>(null);
+  const method = picked ?? first;
   const [amountText, setAmountText] = useState('');
   const [spentOn, setSpentOn] = useState(() => ymd(new Date()));
   const [receipt, setReceipt] = useState('');
@@ -57,7 +57,8 @@ function AddExpensePanel({ open, onClose, closedDays }: { open: boolean; onClose
   function submit() {
     const amount = parseGHS(amountText);
     if (amount === null || amount <= 0) return setError('Enter the amount, like 20 or 20.50');
-    const parsed = expenseInput.safeParse({ category, amount, method, spentOn, receipt, note, idemKey });
+    if (!method) return setError('Pick how it was paid');
+    const parsed = expenseInput.safeParse({ category, amount, methodId: method.id, spentOn, receipt, note, idemKey });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Check the details');
     setError(null);
     save.mutate(parsed.data);
@@ -72,7 +73,7 @@ function AddExpensePanel({ open, onClose, closedDays }: { open: boolean; onClose
       <Field label="Amount (GH₵)">
         <input className="input" inputMode="decimal" value={amountText} onChange={(e) => { setAmountText(e.target.value); setError(null); }} autoComplete="off" placeholder="0.00" aria-label="Amount" />
       </Field>
-      <Choice label="Paid with" value={method} options={METHOD_OPTIONS} onChange={setMethod} />
+      <MethodPicker label="Paid with" value={method?.id ?? null} onChange={setPicked} />
       <Field label="Receipt number" hint="Leave empty if there is no receipt. It will be flagged.">
         <input className="input" value={receipt} onChange={(e) => setReceipt(e.target.value)} maxLength={80} autoComplete="off" placeholder="R-1042, or where the paper is kept" />
       </Field>
@@ -144,7 +145,7 @@ function ExpenseRow({ expense, closed, canVoid, onVoid }: { expense: ExpenseDto;
             <Pill tone="grey">Voided</Pill>
           ) : (
             <>
-              {expense.method === 'momo' && <Pill tone="blue">MoMo</Pill>}
+              {expense.methodId !== 1 && <Pill tone="blue">{expense.method}</Pill>}
               {expense.receipt === null && <Pill tone="amber">No receipt</Pill>}
             </>
           )}
@@ -216,8 +217,8 @@ export function Expenses() {
         compact
         items={[
           { label: 'Spent', value: formatGHS(data?.sum ?? 0) },
-          { label: 'Cash', value: formatGHS(data?.cashSum ?? 0) },
-          { label: 'MoMo', value: formatGHS(data?.momoSum ?? 0) },
+          { label: 'From the drawer', short: 'Drawer', value: formatGHS(data?.drawerSum ?? 0) },
+          { label: 'Paid another way', short: 'Other', value: formatGHS(data?.otherSum ?? 0) },
           { label: 'No receipt', short: 'No receipt', value: String(data?.withoutReceipt ?? 0) },
         ]}
       />

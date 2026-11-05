@@ -25,7 +25,6 @@ import {
 
 export const carTypeEnum = pgEnum('car_type', ['saloon', 'suv', 'pickup', 'van', 'other']);
 export const jobStatusEnum = pgEnum('job_status', ['pending', 'in_progress', 'completed', 'dispatched']);
-export const payMethodEnum = pgEnum('pay_method', ['cash', 'momo']);
 export const commissionKindEnum = pgEnum('commission_kind', ['percent', 'fixed']);
 export const commissionStatusEnum = pgEnum('commission_status', ['earned', 'reversed']);
 export const tipKindEnum = pgEnum('tip_kind', ['direct', 'held']);
@@ -231,15 +230,39 @@ export const jobLineAttendants = pgTable(
 
 // ---- money in ------------------------------------------------------------
 
+/**
+ * A way money moves (cash, MoMo, a bank...). The owner adds them in Settings. Old records keep pointing at a method
+ * that has been switched off, so a method is never deleted. `inDrawer` says whether the money passes through the
+ * cash drawer, which is what the daily close counts.
+ */
+export const paymentMethods = pgTable(
+  'payment_methods',
+  {
+    id: id(),
+    name: text('name').notNull(),
+    inDrawer: boolean('in_drawer').notNull().default(false),
+    requiresReference: boolean('requires_reference').notNull().default(false),
+    active: boolean('active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: stamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('payment_methods_name_unique').on(sql`lower(${t.name})`),
+    check('payment_methods_name_not_blank', sql`length(btrim(${t.name})) > 0`),
+  ],
+);
+
 /** Money received against a job. Voided, never edited or deleted. */
 export const payments = pgTable(
   'payments',
   {
     id: id(),
     jobId: ref('job_id').notNull().references(() => jobs.id),
-    method: payMethodEnum('method').notNull(),
+    methodId: ref('method_id').notNull().references(() => paymentMethods.id),
     amount: integer('amount').notNull(),
-    momoReference: text('momo_reference'),
+    /** Where the money came from, such as a MoMo or transfer reference. Needed only for methods that ask for one. */
+    reference: text('reference'),
     /** Unique, so a double-tap or a retry saves once (idempotency). */
     idemKey: text('idem_key').notNull().unique(),
     recordedBy: ref('recorded_by').notNull().references(() => users.id),
@@ -252,10 +275,7 @@ export const payments = pgTable(
     index('payments_job_idx').on(t.jobId),
     index('payments_created_idx').on(t.createdAt),
     check('payments_amount_positive', sql`${t.amount} > 0`),
-    check(
-      'payments_momo_needs_reference',
-      sql`${t.method} <> 'momo' OR length(btrim(coalesce(${t.momoReference}, ''))) > 0`,
-    ),
+    check('payments_reference_not_blank', sql`${t.reference} IS NULL OR length(btrim(${t.reference})) > 0`),
     check(
       'payments_void_complete',
       sql`(${t.voidedAt} IS NULL) = (${t.voidedBy} IS NULL) AND (${t.voidedAt} IS NULL) = (${t.voidReason} IS NULL)`,
@@ -272,7 +292,7 @@ export const commissionPayouts = pgTable(
     id: id(),
     attendantId: ref('attendant_id').notNull().references(() => attendants.id),
     amount: integer('amount').notNull(),
-    method: payMethodEnum('method').notNull(),
+    methodId: ref('method_id').notNull().references(() => paymentMethods.id),
     paidBy: ref('paid_by').notNull().references(() => users.id),
     note: text('note'),
     /** Unique, so a double-tap or a retry pays once. */
@@ -365,7 +385,7 @@ export const expenses = pgTable(
     id: id(),
     category: text('category').notNull(),
     amount: integer('amount').notNull(),
-    method: payMethodEnum('method').notNull(),
+    methodId: ref('method_id').notNull().references(() => paymentMethods.id),
     /** A receipt number, or where the paper is kept. Photos can come later. Empty means "no receipt". */
     receiptFile: text('receipt_file'),
     /** Unique, so a double-tap or a retry saves the expense once. */
@@ -401,7 +421,8 @@ export const dailyCloses = pgTable(
     countedCash: integer('counted_cash').notNull(),
     /** Counted minus expected. Negative is a shortage. */
     difference: integer('difference').generatedAlwaysAs(sql`counted_cash - expected_cash`),
-    momoTotal: integer('momo_total').notNull(),
+    /** What came in some way other than the drawer (MoMo, a bank) that day. */
+    otherTotal: integer('other_total').notNull(),
     status: closeStatusEnum('status').notNull().default('closed'),
     /** Why the count was off, when it was. */
     note: text('note'),
@@ -412,7 +433,7 @@ export const dailyCloses = pgTable(
     reopenReason: text('reopen_reason'),
   },
   (t) => [
-    check('daily_closes_amounts_not_negative', sql`${t.openingFloat} >= 0 AND ${t.countedCash} >= 0 AND ${t.momoTotal} >= 0`),
+    check('daily_closes_amounts_not_negative', sql`${t.openingFloat} >= 0 AND ${t.countedCash} >= 0 AND ${t.otherTotal} >= 0`),
     check(
       'daily_closes_reopen_complete',
       sql`(${t.reopenedAt} IS NULL) = (${t.reopenedBy} IS NULL) AND (${t.reopenedAt} IS NULL) = (${t.reopenReason} IS NULL)`,

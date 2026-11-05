@@ -22,6 +22,7 @@ import { jobRoutes } from './routes/jobs.js';
 import { serviceRoutes } from './routes/services.js';
 import { smsRoutes } from './routes/sms.js';
 import { tipRoutes } from './routes/tips.js';
+import { paymentMethodRoutes } from './routes/paymentMethods.js';
 import { roleRoutes } from './routes/roles.js';
 import { userRoutes } from './routes/users.js';
 
@@ -132,6 +133,7 @@ export async function buildApp(opts: { db: Db; config: Config; logger?: boolean;
   await app.register(attendantRoutes, { prefix: '/api/attendants' });
   await app.register(userRoutes, { prefix: '/api/users' });
   await app.register(roleRoutes, { prefix: '/api/roles' });
+  await app.register(paymentMethodRoutes, { prefix: '/api/payment-methods' });
   await app.register(customerRoutes, { prefix: '/api/customers' });
   await app.register(vehicleRoutes, { prefix: '/api/vehicles' });
   await app.register(jobRoutes, { prefix: '/api/jobs' });

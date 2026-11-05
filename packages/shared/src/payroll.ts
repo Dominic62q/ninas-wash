@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { PAY_METHODS } from './jobs.js';
 
 /** Input rules for Phase 4 (commissions and tips). The browser and the server run the exact same checks. */
 
@@ -28,7 +27,7 @@ export const handoutInput = z.object({ attendantId: id });
 export const payoutInput = z.object({
   attendantId: id,
   amount,
-  method: z.enum(PAY_METHODS),
+  methodId: z.number().int().positive('Pick how it was paid'),
   note: z.string().trim().max(200).nullish().transform((v) => v || null),
   idemKey,
 });

@@ -20,6 +20,7 @@ import { Me } from './pages/Me';
 import { Money } from './pages/Money';
 import { NewJob } from './pages/NewJob';
 import { Reports } from './pages/Reports';
+import { PaymentMethods } from './pages/PaymentMethods';
 import { Roles } from './pages/Roles';
 import { Services } from './pages/Services';
 import { Settings } from './pages/Settings';
@@ -53,6 +54,7 @@ const SCREENS: Record<string, ReactNode> = {
   '/sms': <Texts />,
   '/activity': <ActivityLog />,
   '/roles': <Roles />,
+  '/payment-methods': <PaymentMethods />,
   '/settings': <Settings />,
 };
 

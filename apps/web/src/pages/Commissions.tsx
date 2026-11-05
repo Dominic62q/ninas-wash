@@ -1,22 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { PAY_METHODS, formatGHS, parseGHS, payoutInput, reasonInput, type CommissionLedger, type CommissionOverview, type LedgerEntry } from '@niinas/shared';
+import { formatGHS, parseGHS, payoutInput, reasonInput, type CommissionLedger, type CommissionOverview, type LedgerEntry, type PayMethodDto } from '@niinas/shared';
 import { useToast } from '../components/Toast';
-import { Choice, EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, errorMessage } from '../components/ui';
-import { methodLabel } from '../components/PaymentBits';
+import { EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, errorMessage } from '../components/ui';
+import { MethodPicker } from '../components/PaymentBits';
 import { api } from '../lib/api';
+import { useActiveMethods } from '../lib/useMethods';
 import { newKey, shortDateTime } from '../lib/format';
 
 type Payout = Extract<LedgerEntry, { type: 'payout' }>;
-
-const METHOD_OPTIONS = PAY_METHODS.map((m) => ({ value: m, label: methodLabel(m) }));
 
 function PayOutPanel({ ledger, onClose }: { ledger: CommissionLedger | null; onClose: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [amountText, setAmountText] = useState(ledger ? String(ledger.owed / 100) : '');
-  const [method, setMethod] = useState<(typeof PAY_METHODS)[number]>('cash');
+  const { first } = useActiveMethods();
+  const [picked, setPicked] = useState<PayMethodDto | null>(null);
+  const method = picked ?? first;
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   // One key per form, so a double tap or a retry on a bad connection pays once.
@@ -36,7 +37,8 @@ function PayOutPanel({ ledger, onClose }: { ledger: CommissionLedger | null; onC
     const amount = parseGHS(amountText);
     if (amount === null || amount <= 0) return setError('Enter the amount, like 20 or 20.50');
     if (amount > ledger.owed) return setError(`Only ${formatGHS(ledger.owed)} is owed`);
-    const parsed = payoutInput.safeParse({ attendantId: ledger.attendant.id, amount, method, note: note.trim() || null, idemKey });
+    if (!method) return setError('Pick how they were paid');
+    const parsed = payoutInput.safeParse({ attendantId: ledger.attendant.id, amount, methodId: method.id, note: note.trim() || null, idemKey });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Check the details');
     setError(null);
     save.mutate(parsed.data);
@@ -52,7 +54,7 @@ function PayOutPanel({ ledger, onClose }: { ledger: CommissionLedger | null; onC
           <Field label="Amount (GH₵)">
             <input className="input" inputMode="decimal" value={amountText} onChange={(e) => { setAmountText(e.target.value); setError(null); }} autoComplete="off" aria-label="Amount" />
           </Field>
-          <Choice label="Paid how?" value={method} options={METHOD_OPTIONS} onChange={setMethod} />
+          <MethodPicker label="Paid how?" value={method?.id ?? null} onChange={setPicked} />
           <Field label="Note (optional)">
             <input className="input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} autoComplete="off" placeholder="Week ending Friday" />
           </Field>
@@ -133,7 +135,7 @@ function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid: (p: Payout) 
       <div className={`min-w-0 flex-1 ${entry.voided ? 'text-ink-3' : ''}`}>
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className={`font-medium ${entry.voided ? 'line-through' : 'text-ink'}`}>Paid out</span>
-          <Pill tone={entry.voided ? 'grey' : 'green'}>{entry.voided ? 'Voided' : methodLabel(entry.method)}</Pill>
+          <Pill tone={entry.voided ? 'grey' : 'green'}>{entry.voided ? 'Voided' : entry.method}</Pill>
         </p>
         <p className="text-xs text-ink-3">
           {entry.by}, {shortDateTime(entry.at)}

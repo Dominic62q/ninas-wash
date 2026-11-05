@@ -64,6 +64,7 @@ const LABELS: Record<string, string> = {
   'payment.record': 'Took a payment',
   'payment.void': 'Voided a payment',
   'role.create': 'Added a role',
+  'role.delete': 'Removed a role',
   'role.update': 'Changed a role',
   'service.create': 'Added a service',
   'service.update': 'Changed a service',
@@ -86,7 +87,7 @@ export function auditLabel(action: string): string {
 }
 
 /** Keys whose number is money in whole pesewas. */
-const MONEY_KEYS = new Set(['amount', 'price', 'discount', 'openingFloat', 'expected', 'counted', 'difference', 'momo', 'total', 'balance']);
+const MONEY_KEYS = new Set(['amount', 'price', 'discount', 'openingFloat', 'expected', 'counted', 'difference', 'momo', 'other', 'total', 'balance']);
 /** Keys that add nothing to a one-line summary. */
 const QUIET_KEYS = new Set(['passwordHash', 'password', 'token', 'idemKey']);
 

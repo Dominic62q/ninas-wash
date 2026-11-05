@@ -4,10 +4,11 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { EXPENSE_BACKDATE_DAYS, expenseInput, reasonInput, type ExpenseDto, type ExpensesOverview } from '@niinas/shared';
 import type { DbOrTx } from '../db/client.js';
-import { dailyCloses, expenses, users } from '../db/schema.js';
+import { dailyCloses, expenses, paymentMethods, users } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
 import { assertDayOpen, dayOf } from '../lib/dayLock.js';
 import { HttpError, conflict, notFound } from '../lib/errors.js';
+import { activeMethod, drawerSplit } from '../lib/methods.js';
 import { idParams } from '../lib/params.js';
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -21,18 +22,20 @@ const voider = alias(users, 'voider');
 
 async function selectExpenses(db: DbOrTx, where: ReturnType<typeof and>, limit: number): Promise<ExpenseDto[]> {
   const rows = await db
-    .select({ e: expenses, by: users.name, voidedBy: voider.name })
+    .select({ e: expenses, by: users.name, voidedBy: voider.name, method: paymentMethods.name })
     .from(expenses)
     .innerJoin(users, eq(users.id, expenses.enteredBy))
+    .innerJoin(paymentMethods, eq(paymentMethods.id, expenses.methodId))
     .leftJoin(voider, eq(voider.id, expenses.voidedBy))
     .where(where)
     .orderBy(desc(expenses.spentOn), desc(expenses.id))
     .limit(limit);
-  return rows.map(({ e, by, voidedBy }) => ({
+  return rows.map(({ e, by, voidedBy, method }) => ({
     id: e.id,
     category: e.category,
     amount: e.amount,
-    method: e.method,
+    methodId: e.methodId,
+    method,
     spentOn: e.spentOn,
     receipt: e.receiptFile,
     note: e.note,
@@ -58,11 +61,11 @@ export const expenseRoutes: FastifyPluginAsync = async (app) => {
     const [totals] = await app.db
       .select({
         sum: sql<number>`coalesce(sum(${expenses.amount}), 0)::int`,
-        cash: sql<number>`coalesce(sum(${expenses.amount}) filter (where ${expenses.method} = 'cash'), 0)::int`,
-        momo: sql<number>`coalesce(sum(${expenses.amount}) filter (where ${expenses.method} = 'momo'), 0)::int`,
+        ...drawerSplit(expenses.amount, paymentMethods.inDrawer),
         noReceipt: sql<number>`count(*) filter (where ${expenses.receiptFile} is null)::int`,
       })
       .from(expenses)
+      .innerJoin(paymentMethods, eq(paymentMethods.id, expenses.methodId))
       .where(and(inRange, isNull(expenses.voidedAt)));
     const closed = await app.db
       .select({ day: dailyCloses.day })
@@ -74,8 +77,8 @@ export const expenseRoutes: FastifyPluginAsync = async (app) => {
       to,
       expenses: list,
       sum: totals?.sum ?? 0,
-      cashSum: totals?.cash ?? 0,
-      momoSum: totals?.momo ?? 0,
+      drawerSum: totals?.drawer ?? 0,
+      otherSum: totals?.other ?? 0,
       withoutReceipt: totals?.noReceipt ?? 0,
       closedDays: closed.map((c) => c.day),
     };
@@ -94,12 +97,13 @@ export const expenseRoutes: FastifyPluginAsync = async (app) => {
       const [again] = await tx.select({ id: expenses.id }).from(expenses).where(eq(expenses.idemKey, input.idemKey));
       if (again) return { id: again.id, created: false };
       await assertDayOpen(tx, spentOn);
+      const method = await activeMethod(tx, input.methodId);
       const [row] = await tx
         .insert(expenses)
         .values({
           category: input.category,
           amount: input.amount,
-          method: input.method,
+          methodId: method.id,
           spentOn,
           receiptFile: input.receipt,
           note: input.note,
@@ -112,7 +116,7 @@ export const expenseRoutes: FastifyPluginAsync = async (app) => {
         action: 'expense.create',
         recordTable: 'expenses',
         recordId: row!.id,
-        after: { category: input.category, amount: input.amount, method: input.method, spentOn, receipt: input.receipt },
+        after: { category: input.category, amount: input.amount, method: method.name, spentOn, receipt: input.receipt },
         ip: req.ip,
       });
       return { id: row!.id, created: true };
@@ -129,6 +133,7 @@ export const expenseRoutes: FastifyPluginAsync = async (app) => {
     await app.db.transaction(async (tx) => {
       const [expense] = await tx.select().from(expenses).where(eq(expenses.id, id)).for('update');
       if (!expense) throw notFound('That expense');
+      const [method] = await tx.select({ name: paymentMethods.name }).from(paymentMethods).where(eq(paymentMethods.id, expense.methodId));
       if (expense.voidedAt) throw conflict('already_voided', 'That expense was already voided.');
       await assertDayOpen(tx, expense.spentOn);
       await tx.update(expenses).set({ voidedAt: new Date(), voidedBy: req.user!.id, voidReason: reason }).where(eq(expenses.id, id));
@@ -137,7 +142,7 @@ export const expenseRoutes: FastifyPluginAsync = async (app) => {
         action: 'expense.void',
         recordTable: 'expenses',
         recordId: id,
-        before: { category: expense.category, amount: expense.amount, method: expense.method, spentOn: expense.spentOn },
+        before: { category: expense.category, amount: expense.amount, method: method?.name, spentOn: expense.spentOn },
         note: reason,
         ip: req.ip,
       });

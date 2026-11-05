@@ -55,19 +55,20 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
 
     let last7: DashboardDto['last7'] = null;
     if (can(role, 'dailyclose.see_expected')) {
-      const rows = await db.execute<{ day: string; cash: number; momo: number }>(sql`
-        select to_char(created_at at time zone 'UTC', 'YYYY-MM-DD') as day,
-               coalesce(sum(amount) filter (where method = 'cash'), 0)::int as cash,
-               coalesce(sum(amount) filter (where method = 'momo'), 0)::int as momo
-        from payments
-        where voided_at is null
-          and created_at >= ${new Date(start.getTime() - 6 * 86_400_000).toISOString()}::timestamptz
-          and created_at < ${end.toISOString()}::timestamptz
+      const rows = await db.execute<{ day: string; drawer: number; other: number }>(sql`
+        select to_char(p.created_at at time zone 'UTC', 'YYYY-MM-DD') as day,
+               coalesce(sum(p.amount) filter (where m.in_drawer), 0)::int as drawer,
+               coalesce(sum(p.amount) filter (where not m.in_drawer), 0)::int as other
+        from payments p
+        join payment_methods m on m.id = p.method_id
+        where p.voided_at is null
+          and p.created_at >= ${new Date(start.getTime() - 6 * 86_400_000).toISOString()}::timestamptz
+          and p.created_at < ${end.toISOString()}::timestamptz
         group by 1`);
       last7 = Array.from({ length: 7 }, (_, i) => {
         const d = new Date(start.getTime() - (6 - i) * 86_400_000).toISOString().slice(0, 10);
         const r = rows.rows.find((x) => x.day === d);
-        return { day: d, cash: r?.cash ?? 0, momo: r?.momo ?? 0, total: (r?.cash ?? 0) + (r?.momo ?? 0) };
+        return { day: d, drawer: r?.drawer ?? 0, other: r?.other ?? 0, total: (r?.drawer ?? 0) + (r?.other ?? 0) };
       });
     }
 

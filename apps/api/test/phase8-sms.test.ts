@@ -154,7 +154,7 @@ describe('automatic texts', () => {
     expect(sent[1]!.message).toContain('Total GHS 50.00, still to pay GHS 50.00');
 
     const key = newKey();
-    const paid = await call(cashier, 'POST', `/api/jobs/${jobId}/payments`, { method: 'cash', amount: 3000, idemKey: key });
+    const paid = await call(cashier, 'POST', `/api/jobs/${jobId}/payments`, { methodId: 1, amount: 3000, idemKey: key });
     expect(paid.statusCode).toBe(201);
     await settle();
     expect(sent).toHaveLength(3);
@@ -162,7 +162,7 @@ describe('automatic texts', () => {
     expect(sent[2]!.message).toContain('Still to pay: GHS 20.00');
 
     // The same tap sent again saves no new payment, so it sends no new text.
-    const again = await call(cashier, 'POST', `/api/jobs/${jobId}/payments`, { method: 'cash', amount: 3000, idemKey: key });
+    const again = await call(cashier, 'POST', `/api/jobs/${jobId}/payments`, { methodId: 1, amount: 3000, idemKey: key });
     expect(again.statusCode).toBe(200);
     await settle();
     expect(sent).toHaveLength(3);
