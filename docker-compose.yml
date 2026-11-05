@@ -1,5 +1,6 @@
-# The server side of Niinas Wash: Caddy (HTTPS), the API, and Postgres. Nothing is published except 80 and 443.
-# Settings come from a .env file next to this one (copy deploy/.env.example and fill it in).
+# The server side of Niinas Wash: the API and Postgres. Nothing is published to the internet from here.
+# HTTPS is done by the Caddy that already runs on the server: it reaches the API over the shared Docker network
+# (see deploy/install-caddy-site.sh). Settings come from a .env file next to this one (copy deploy/.env.example).
 services:
   db:
     image: postgres:16-alpine
@@ -16,10 +17,12 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
+  # Named niinas-api, not api: it joins a network shared with other apps, and a plain "api" could be mistaken for theirs.
+  niinas-api:
     build: .
     restart: unless-stopped
     init: true
+    container_name: niinas-api
     depends_on:
       db:
         condition: service_healthy
@@ -31,25 +34,15 @@ services:
       SMS_SENDER_ID: ${SMS_SENDER_ID:-NiinasWash}
     expose:
       - '3001'
+    networks:
+      - default
+      - edge
 
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    depends_on:
-      - api
-    ports:
-      - '80:80'
-      - '443:443'
-      - '443:443/udp'
-    environment:
-      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN in .env (the API hostname)}
-      ORIGIN_SECRET: ${ORIGIN_SECRET:?Set ORIGIN_SECRET in .env}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+networks:
+  # The network the server's Caddy is on. It must already exist (docker network ls). Set EDGE_NETWORK in .env if it differs.
+  edge:
+    name: ${EDGE_NETWORK:-rigel-medsgh_rigel-network}
+    external: true
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:

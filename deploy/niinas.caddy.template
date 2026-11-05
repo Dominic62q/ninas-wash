@@ -1,0 +1,27 @@
+# A site for the server's existing Caddy (it imports /etc/caddy/sites/*.caddy).
+# deploy/install-caddy-site.sh fills in the two values below from .env and installs it. Do not copy this file by hand.
+# The HTTPS certificate is fetched automatically once the hostname points at the server.
+__API_DOMAIN__ {
+	# Only Vercel knows this secret (vercel.json adds it to every /api request). Anything else gets nothing.
+	@notvercel not header X-Origin-Secret __ORIGIN_SECRET__
+	handle @notvercel {
+		respond 403
+	}
+
+	handle /api/* {
+		# Receipt photos are sent as the raw image, up to 2.5 MB each.
+		request_body {
+			max_size 3MB
+		}
+		reverse_proxy niinas-api:3001 {
+			# The visitor address arrives in X-Forwarded-For from Vercel. Keep it, so the sign-in limit sees each person.
+			# This is safe because nothing without the secret above gets this far.
+			trusted_proxies 0.0.0.0/0 ::/0
+			header_up -X-Origin-Secret
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}
