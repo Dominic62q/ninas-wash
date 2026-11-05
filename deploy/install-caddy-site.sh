@@ -16,7 +16,10 @@ set -a; . ./.env; set +a
 BACKUP=""
 if [ -f "$TARGET" ]; then BACKUP="$(mktemp)"; cp "$TARGET" "$BACKUP"; fi
 
-sed -e "s|__API_DOMAIN__|$API_DOMAIN|" -e "s|__ORIGIN_SECRET__|$ORIGIN_SECRET|" deploy/niinas.caddy.template > "$TARGET"
+# API_DOMAIN may list several hostnames separated by commas (useful while moving to a new one); Caddy wants ", ".
+HOSTS="$(printf '%s' "$API_DOMAIN" | sed 's/, */, /g')"
+
+sed -e "s|__API_DOMAIN__|$HOSTS|" -e "s|__ORIGIN_SECRET__|$ORIGIN_SECRET|" deploy/niinas.caddy.template > "$TARGET"
 chmod 600 "$TARGET"
 
 if docker exec "$CADDY_CONTAINER" caddy validate --config /etc/caddy/Caddyfile; then
