@@ -1,7 +1,7 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { createUserInput, isWithin, outranks, permissionsOf, updateUserInput, type TemporaryPassword, type UserDto } from '@niinas/shared';
-import { roles, users } from '../db/schema.js';
+import { attendants, roles, users } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
 import { HttpError, conflict, forbidden, notFound } from '../lib/errors.js';
 import { changedFields, isUniqueViolation, temporaryPassword } from '../lib/helpers.js';
@@ -18,6 +18,7 @@ const toDto = ({ u, r }: Row): UserDto => ({
   role: r.name,
   roleLocked: r.locked,
   active: u.active,
+  attendantId: u.attendantId,
   mustChangePassword: u.mustChangePassword,
   lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
 });
@@ -65,16 +66,23 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const passwordHash = await hashPassword(password);
     try {
       const created = await app.db.transaction(async (tx) => {
+        if (input.attendantId !== null) {
+          const [attendant] = await tx.select().from(attendants).where(eq(attendants.id, input.attendantId)).for('update');
+          if (!attendant) throw notFound('That attendant');
+          if (!attendant.active) throw conflict('attendant_left', 'That attendant no longer works here.');
+          const [taken] = await tx.select({ id: users.id }).from(users).where(eq(users.attendantId, input.attendantId));
+          if (taken) throw conflict('attendant_has_login', 'That attendant already has a login.');
+        }
         const [row] = await tx
           .insert(users)
-          .values({ name: input.name, username: input.username, roleId: input.roleId, passwordHash, mustChangePassword: true })
+          .values({ name: input.name, username: input.username, roleId: input.roleId, attendantId: input.attendantId, passwordHash, mustChangePassword: true })
           .returning();
         await writeAudit(tx, {
           userId: req.user!.id,
           action: 'user.create',
           recordTable: 'users',
           recordId: row!.id,
-          after: { name: input.name, username: input.username, role: role.name }, // never the password
+          after: { name: input.name, username: input.username, role: role.name, ...(input.attendantId !== null ? { attendantId: input.attendantId } : {}) }, // never the password
           ip: req.ip,
         });
         return row!;

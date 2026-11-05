@@ -11,7 +11,7 @@ const UNCLOSED_LOOKBACK_DAYS = 7;
 
 /** The home screen: today at a glance. Each person gets only the parts their role works with. */
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/', { preHandler: app.requireAuth }, async (req): Promise<DashboardDto> => {
+  app.get('/', { preHandler: app.requirePermission('dashboard.view') }, async (req): Promise<DashboardDto> => {
     const { db } = app;
     const role = req.user!.permissions;
     const day = dayOf();

@@ -20,7 +20,19 @@ import { useAssignableRoles, useRoles } from '../lib/useRoles';
 
 // ---- attendants ---------------------------------------------------------------
 
-function AttendantForm({ attendant, onDone }: { attendant: AttendantDto | null; onDone: () => void }) {
+function AttendantForm({
+  attendant,
+  login,
+  onGiveLogin,
+  onDone,
+}: {
+  attendant: AttendantDto | null;
+  /** The login this attendant already has, if any. */
+  login: UserDto | null;
+  /** Set when this person may make logins. */
+  onGiveLogin: (() => void) | null;
+  onDone: () => void;
+}) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [name, setName] = useState(attendant?.name ?? '');
@@ -65,6 +77,21 @@ function AttendantForm({ attendant, onDone }: { attendant: AttendantDto | null; 
       {attendant && (
         <Check label="Still works here" checked={active} onChange={setActive} />
       )}
+      {attendant && (login || (onGiveLogin && attendant.active)) && (
+        <div className="flex items-center gap-3 border-t border-line pt-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-ink">Their own login</p>
+            <p className="text-sm text-ink-3">
+              {login ? `Signs in as ${login.username}. Reset the password from Users.` : 'So they can see their own washes and what they have earned.'}
+            </p>
+          </div>
+          {!login && onGiveLogin && (
+            <button type="button" className="btn" onClick={onGiveLogin}>
+              Give a login
+            </button>
+          )}
+        </div>
+      )}
       <FormError message={save.isError ? errorMessage(save.error) : null} />
       <div className="flex gap-3">
         <button type="submit" className="btn btn-primary flex-1" disabled={save.isPending}>
@@ -91,13 +118,14 @@ function AttendantForm({ attendant, onDone }: { attendant: AttendantDto | null; 
   );
 }
 
-function Attendants({ shown }: { shown: boolean }) {
+function Attendants({ shown, logins, onGiveLogin }: { shown: boolean; logins: UserDto[]; onGiveLogin: ((a: AttendantDto) => void) | null }) {
   const list = useQuery({
     queryKey: ['attendants', 'all'],
     queryFn: () => api<{ attendants: AttendantDto[] }>('/attendants?includeInactive=1'),
   });
   const [editing, setEditing] = useState<AttendantDto | null | undefined>(undefined);
   const rows = list.data?.attendants ?? [];
+  const loginOf = (a: AttendantDto) => logins.find((u) => u.attendantId === a.id) ?? null;
 
   return (
     <section aria-labelledby="attendants-h" className={`flex flex-col gap-3 ${shown ? '' : 'max-lg:hidden'}`}>
@@ -128,6 +156,7 @@ function Attendants({ shown }: { shown: boolean }) {
                   <span className={`block truncate font-medium ${a.active ? 'text-ink' : 'text-ink-3'}`}>{a.name}</span>
                   <span className="block truncate text-sm text-ink-3">
                     {a.phone ? formatPhone(a.phone) : 'No phone'}
+                    {loginOf(a) && <span> · Has a login</span>}
                     <span className="lg:hidden"> · {a.active ? plural(a.jobsThisWeek, 'job') : `left ${shortDate(a.leftOn)}`}</span>
                   </span>
                 </span>
@@ -141,7 +170,15 @@ function Attendants({ shown }: { shown: boolean }) {
         </ul>
       </div>
       <Panel open={editing !== undefined} onClose={() => setEditing(undefined)} title={editing ? 'Edit attendant' : 'Add attendant'}>
-        {editing !== undefined && <AttendantForm key={editing?.id ?? 'new'} attendant={editing} onDone={() => setEditing(undefined)} />}
+        {editing !== undefined && (
+          <AttendantForm
+            key={editing?.id ?? 'new'}
+            attendant={editing}
+            login={editing ? loginOf(editing) : null}
+            onGiveLogin={onGiveLogin && editing ? () => { const a = editing; setEditing(undefined); onGiveLogin(a); } : null}
+            onDone={() => setEditing(undefined)}
+          />
+        )}
       </Panel>
     </section>
   );
@@ -179,19 +216,30 @@ function TemporaryPasswordPanel({ who, password, onClose }: { who: string; passw
   );
 }
 
+/** "Kofi Mensah" becomes "kofi.mensah", a starting point the person can change. */
+const suggestUsername = (name?: string) =>
+  (name ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 32);
+
 function UserForm({
   user,
+  forAttendant = null,
   onDone,
   onCreated,
 }: {
   user: UserDto | null;
+  /** Making a login for this attendant: their name is filled in and the Attendant role is the starting choice. */
+  forAttendant?: AttendantDto | null;
   onDone: () => void;
   onCreated: (who: string, password: string) => void;
 }) {
   const queryClient = useQueryClient();
   const { user: me } = useAuth();
-  const [name, setName] = useState(user?.name ?? '');
-  const [username, setUsername] = useState(user?.username ?? '');
+  const [name, setName] = useState(user?.name ?? forAttendant?.name ?? '');
+  const [username, setUsername] = useState(user?.username ?? suggestUsername(forAttendant?.name));
   const { assignable } = useAssignableRoles();
   /** The chosen role's id. Empty until the list arrives, then the person with the least access is the safe starting point. */
   const [picked, setPicked] = useState<string>(user ? String(user.roleId) : '');
@@ -201,7 +249,11 @@ function UserForm({
   // Only roles that do no more than you can. Whoever is being edited keeps their current role in the list.
   const options = [...assignable];
   if (user && !options.some((o) => o.id === user.roleId)) options.unshift({ id: user.roleId, name: user.role, locked: user.roleLocked, permissions: [], members: 0 });
-  const initial = String(options.slice().sort((a, b) => a.permissions.length - b.permissions.length)[0]?.id ?? '');
+  const initial = String(
+    (forAttendant ? options.find((o) => o.name === 'Attendant') : undefined)?.id ??
+      options.slice().sort((a, b) => a.permissions.length - b.permissions.length)[0]?.id ??
+      '',
+  );
   const toast = useToast();
   /** Switching someone off or changing their role takes effect at once, so it asks first. */
   const [risky, setRisky] = useState<{ body: unknown; title: string; message: string; label: string } | null>(null);
@@ -239,7 +291,7 @@ function UserForm({
       }
       return save.mutate(body);
     }
-    const parsed = createUserInput.safeParse({ name, username, roleId: Number(picked || initial) });
+    const parsed = createUserInput.safeParse({ name, username, roleId: Number(picked || initial), attendantId: forAttendant?.id ?? null });
     if (!parsed.success) {
       const found: Record<string, string> = {};
       for (const issue of parsed.error.issues) found[String(issue.path[0])] ??= issue.message;
@@ -276,6 +328,7 @@ function UserForm({
       )}
       {user && !isSelf && <Check label="Can sign in" hint="Off signs them out" checked={active} onChange={setActive} />}
       {isSelf && <p className="text-sm text-ink-3">You cannot change your own role or access</p>}
+      {forAttendant && <p className="text-sm text-ink-3">This login belongs to {forAttendant.name}, so they can see their own work.</p>}
       {!user && <p className="text-sm text-ink-3">A one-time password is shown after saving</p>}
       <FormError message={save.isError ? errorMessage(save.error) : null} />
       <div className="flex gap-3">
@@ -423,6 +476,10 @@ export function Staff() {
   const { can } = useAuth();
   const both = can('attendant.manage');
   const [tab, setTab] = useState<'attendants' | 'users'>('attendants');
+  const users = useQuery({ queryKey: ['users'], queryFn: () => api<{ users: UserDto[] }>('/users') });
+  /** The attendant a login is being made for. */
+  const [loginFor, setLoginFor] = useState<AttendantDto | null>(null);
+  const [shown, setShown] = useState<{ who: string; password: string } | null>(null);
   return (
     <div className="flex flex-col gap-3 lg:gap-8">
       {both && (
@@ -443,8 +500,12 @@ export function Staff() {
           ))}
         </div>
       )}
-      {both && <Attendants shown={tab === 'attendants'} />}
+      {both && <Attendants shown={tab === 'attendants'} logins={users.data?.users ?? []} onGiveLogin={can('user.manage') ? setLoginFor : null} />}
       <Users shown={!both || tab === 'users'} />
+      <Panel open={loginFor !== null} onClose={() => setLoginFor(null)} title={loginFor ? `Login for ${loginFor.name}` : 'Give a login'}>
+        {loginFor && <UserForm key={loginFor.id} user={null} forAttendant={loginFor} onDone={() => setLoginFor(null)} onCreated={(who, password) => setShown({ who, password })} />}
+      </Panel>
+      <TemporaryPasswordPanel who={shown?.who ?? ''} password={shown?.password ?? null} onClose={() => setShown(null)} />
     </div>
   );
 }

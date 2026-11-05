@@ -17,6 +17,7 @@ import { Expenses } from './pages/Expenses';
 import { JobDetail } from './pages/JobDetail';
 import { Jobs } from './pages/Jobs';
 import { Me } from './pages/Me';
+import { MyWork } from './pages/MyWork';
 import { Money } from './pages/Money';
 import { NewJob } from './pages/NewJob';
 import { Receipt } from './pages/Receipt';
@@ -44,6 +45,7 @@ function RequireSignIn() {
 
 /** The screens built so far. The rest show a "coming in Phase N" note. */
 const SCREENS: Record<string, ReactNode> = {
+  '/my-work': <MyWork />,
   '/jobs': <Jobs />,
   '/customers': <Customers />,
   '/services': <Services />,
@@ -74,6 +76,13 @@ function RequireCan({ permission, children }: { permission: Permission; children
   return can(permission) ? <>{children}</> : <Navigate to="/" replace />;
 }
 
+/** Where "/" leads: the dashboard, or for someone who only sees their own work, that. */
+function Home() {
+  const { can } = useAuth();
+  if (!can('dashboard.view') && can('self.view')) return <Navigate to="/my-work" replace />;
+  return <Dashboard />;
+}
+
 export function App() {
   useThemeSync();
   return (
@@ -85,7 +94,7 @@ export function App() {
         <Route element={<RequireSignIn />}>
           <Route path="/change-password" element={<ChangePassword />} />
           <Route element={<Shell />}>
-            <Route index element={<Dashboard />} />
+            <Route index element={<Home />} />
             <Route path="/more" element={<Navigate to="/me" replace />} />
             <Route path="/me" element={<Me />} />
             <Route path="/money" element={<Money />} />

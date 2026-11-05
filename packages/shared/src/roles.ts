@@ -35,6 +35,9 @@ export const PERMISSION_CATALOG = [
   { key: 'report.view', label: 'See reports', group: 'Control' },
   { key: 'audit.read', label: 'See the activity log', group: 'Control' },
 
+  // Their own work, for attendants who sign in
+  { key: 'self.view', label: 'See their own washes and what they have earned', group: 'Own work' },
+
   // Customer texts
   { key: 'sms.view', label: 'See texts sent to customers', group: 'Texts' },
   { key: 'sms.send', label: 'Send texts to customers', group: 'Texts', needs: ['sms.view'] },
@@ -53,7 +56,7 @@ export type Permission = (typeof PERMISSION_CATALOG)[number]['key'];
 export type PermissionGroup = (typeof PERMISSION_CATALOG)[number]['group'];
 
 export const PERMISSION_KEYS = PERMISSION_CATALOG.map((p) => p.key) as readonly Permission[];
-export const PERMISSION_GROUPS = ['Selling', 'Money out', 'Control', 'Texts', 'Setup'] as const satisfies readonly PermissionGroup[];
+export const PERMISSION_GROUPS = ['Selling', 'Money out', 'Control', 'Own work', 'Texts', 'Setup'] as const satisfies readonly PermissionGroup[];
 
 const NEEDS: Record<string, readonly Permission[]> = Object.fromEntries(PERMISSION_CATALOG.map((p) => [p.key, ('needs' in p ? p.needs : []) as readonly Permission[]]));
 

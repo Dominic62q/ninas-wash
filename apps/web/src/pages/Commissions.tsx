@@ -109,15 +109,20 @@ function VoidPayoutPanel({ payout, attendantName, onClose }: { payout: Payout | 
   );
 }
 
-function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid: (p: Payout) => void }) {
+/** One line of a ledger. On an attendant's own screen there is no void button and no link to the job. */
+export function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid?: (p: Payout) => void }) {
   if (entry.type === 'earned') {
     return (
       <li className="flex items-start gap-3 px-4 py-2.5">
         <div className={`min-w-0 flex-1 ${entry.reversed ? 'text-ink-3' : ''}`}>
           <p className="truncate">
-            <Link to={`/jobs/${entry.jobId}`} className="font-medium text-blue-d">
-              {entry.plate.toUpperCase()}
-            </Link>{' '}
+            {onVoid ? (
+              <Link to={`/jobs/${entry.jobId}`} className="font-medium text-blue-d">
+                {entry.plate.toUpperCase()}
+              </Link>
+            ) : (
+              <span className="font-medium text-ink">{entry.plate.toUpperCase()}</span>
+            )}{' '}
             <span className={entry.reversed ? 'line-through' : 'text-ink-2'}>{entry.service}</span>
           </p>
           <p className="text-xs text-ink-3">
@@ -148,7 +153,7 @@ function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid: (p: Payout) 
         )}
       </div>
       <p className={`num font-semibold ${entry.voided ? 'text-ink-3 line-through' : 'text-green'}`}>−{formatGHS(entry.amount)}</p>
-      {!entry.voided && (
+      {!entry.voided && onVoid && (
         <button type="button" className="tap text-sm text-red-d" onClick={() => onVoid(entry)}>
           Void
         </button>

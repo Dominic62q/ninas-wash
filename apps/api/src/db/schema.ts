@@ -74,6 +74,8 @@ export const users = pgTable(
     /** Set when an admin created or reset the password, so the person must choose their own next. */
     mustChangePassword: boolean('must_change_password').notNull().default(false),
     active: boolean('active').notNull().default(true),
+    /** Set when this login is an attendant's own. One login per attendant. */
+    attendantId: ref('attendant_id').unique().references(() => attendants.id),
     createdAt: createdAt(),
     lastLoginAt: stamp('last_login_at'),
   },

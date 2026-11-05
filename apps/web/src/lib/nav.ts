@@ -6,6 +6,8 @@ export interface NavItem {
   icon: IconName;
   /** Needed to see this item. Leave out if every signed-in person can. */
   needs?: Permission;
+  /** Only for a login that belongs to an attendant. */
+  attendantOnly?: boolean;
   /** Any one of these is enough. For an item that gathers several screens, like Settings. */
   needsAny?: Permission[];
   /** Lives on the Settings screen instead of the menu. */
@@ -24,6 +26,7 @@ export const SETTINGS_SECTIONS = ['Business', 'People', 'Customers', 'Records'] 
 
 export const NAV: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: 'home', needs: 'dashboard.view', phase: 0, group: 'Daily' },
+  { path: '/my-work', label: 'My work', icon: 'coin', needs: 'self.view', attendantOnly: true, phase: 9, group: 'Daily' },
   { path: '/jobs', label: 'Jobs', icon: 'jobs', needs: 'job.create', phase: 2, group: 'Daily' },
   { path: '/customers', label: 'Customers', icon: 'users', needs: 'customer.manage', phase: 1, group: 'Daily' },
   { path: '/expenses', label: 'Expenses', icon: 'receipt', needs: 'expense.create', phase: 5, group: 'Money' },
@@ -69,6 +72,6 @@ export function railFor(items: NavItem[]): NavItem[] {
 }
 
 /** The menu for one person: only what their permissions allow. */
-export function navFor(can: (p: Permission) => boolean): NavItem[] {
-  return NAV.filter((item) => (!item.needs && !item.needsAny) || (item.needs && can(item.needs)) || (item.needsAny?.some(can) ?? false));
+export function navFor(can: (p: Permission) => boolean, isAttendant = false): NavItem[] {
+  return NAV.filter((item) => (!item.attendantOnly || isAttendant) && ((!item.needs && !item.needsAny) || (item.needs && can(item.needs)) || (item.needsAny?.some(can) ?? false)));
 }

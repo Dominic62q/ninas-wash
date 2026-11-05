@@ -107,6 +107,13 @@ export const commissionRoutes: FastifyPluginAsync = async (app) => {
     return { attendants: list, totalOwed: list.reduce((sum, r) => sum + r.owed, 0) };
   });
 
+  // An attendant who signs in sees their own ledger, and only theirs.
+  app.get('/mine', { preHandler: app.requirePermission('self.view') }, async (req) => {
+    const attendantId = req.user!.attendantId;
+    if (attendantId === null) return { ledger: null };
+    return { ledger: await ledgerFor(app.db, attendantId) };
+  });
+
   app.get('/attendants/:id', view, async (req) => {
     const { id } = idParams.parse(req.params);
     const ledger = await ledgerFor(app.db, id);

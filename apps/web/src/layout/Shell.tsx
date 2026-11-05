@@ -122,6 +122,7 @@ function TabBar({ items }: { items: NavItem[] }) {
   const { pathname } = useLocation();
   const hasHome = items.some((i) => i.path === '/');
   const hasJobs = items.some((i) => i.path === '/jobs');
+  const hasWork = items.some((i) => i.path === '/my-work');
   const money = moneyFor(items);
   const meActive = pathname === '/me' || [...meFor(items), ...settingsFor(items)].some((i) => pathname.startsWith(i.path));
   const moneyActive = pathname === '/money' || money.some((i) => pathname.startsWith(i.path));
@@ -164,6 +165,19 @@ function TabBar({ items }: { items: NavItem[] }) {
           </NavLink>
         </>
       )}
+      {hasWork && (
+        <NavLink to="/my-work" className={({ isActive }) => tab(isActive)}>
+          {({ isActive }) => (
+            <>
+              <TabIcon>
+                <circle cx="12" cy="12" r="8.5" />
+                <path d="M12 7.5v9M14.5 9.5c-.4-.7-1.4-1.2-2.5-1.2-1.4 0-2.5.8-2.5 1.9 0 2.6 5 1.2 5 3.8 0 1.1-1.1 1.9-2.5 1.9-1.1 0-2.1-.5-2.5-1.2" />
+              </TabIcon>
+              My work
+            </>
+          )}
+        </NavLink>
+      )}
       {money.length > 0 && (
         <NavLink to="/money" className={() => tab(moneyActive)}>
           <TabIcon>
@@ -186,8 +200,8 @@ function TabBar({ items }: { items: NavItem[] }) {
 }
 
 export function Shell() {
-  const { can } = useAuth();
-  const items = navFor(can);
+  const { can, user } = useAuth();
+  const items = navFor(can, user?.attendantId != null);
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const current = NAV.find((i) => (i.path === '/' ? pathname === '/' : pathname.startsWith(i.path)));

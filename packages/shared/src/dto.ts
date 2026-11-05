@@ -42,6 +42,8 @@ export interface UserDto {
   /** They hold the owner role, which nobody else can change. */
   roleLocked: boolean;
   active: boolean;
+  /** The attendant this login belongs to. */
+  attendantId: number | null;
   mustChangePassword: boolean;
   lastLoginAt: string | null;
 }

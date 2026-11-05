@@ -78,6 +78,8 @@ export const createUserInput = z.object({
   name: z.string().trim().min(1, 'Enter the name').max(80),
   username: usernameField,
   roleId: z.number().int().positive('Pick a role'),
+  /** Set when the login is for an attendant, so they can see their own work. */
+  attendantId: z.number().int().positive().nullish().transform((v) => v ?? null),
 });
 export type CreateUserInput = z.infer<typeof createUserInput>;
 

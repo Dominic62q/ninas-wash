@@ -14,6 +14,8 @@ export const sessionUser = z.object({
   /** The name of their role, for showing on screen. */
   role: z.string(),
   roleId: z.number().int(),
+  /** The attendant this login belongs to, if it is an attendant's own. */
+  attendantId: z.number().int().nullable(),
   /** True after a first sign-in or a reset: the person must choose their own password before anything else. */
   mustChangePassword: z.boolean(),
 });

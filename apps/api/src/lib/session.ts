@@ -18,6 +18,7 @@ export interface AuthedUser {
   name: string;
   username: string;
   roleId: number;
+  attendantId: number | null;
   /** The role's name, for showing on screen. */
   role: string;
   /** What they may do right now. Read from their role on every request, so a change to a role applies at once. */
@@ -32,6 +33,7 @@ export const publicUser = (u: AuthedUser) => ({
   username: u.username,
   role: u.role,
   roleId: u.roleId,
+  attendantId: u.attendantId,
   mustChangePassword: u.mustChangePassword,
 });
 
@@ -59,6 +61,7 @@ export async function findSession(db: Db, token: string, config: Config): Promis
       roleLocked: roles.locked,
       rolePermissions: roles.permissions,
       mustChangePassword: users.mustChangePassword,
+      attendantId: users.attendantId,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -75,6 +78,7 @@ export async function findSession(db: Db, token: string, config: Config): Promis
     name: row.name,
     username: row.username,
     roleId: row.roleId,
+    attendantId: row.attendantId,
     role: row.roleName,
     permissions: permissionsOf({ locked: row.roleLocked, permissions: row.rolePermissions }),
     mustChangePassword: row.mustChangePassword,

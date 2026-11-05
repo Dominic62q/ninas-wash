@@ -85,6 +85,13 @@
       "when": 1793870680861,
       "tag": "0011_job_receipt_links",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793871153971,
+      "tag": "0012_attendant_logins",
+      "breakpoints": true
     }
   ]
 }
