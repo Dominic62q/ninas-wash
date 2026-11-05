@@ -71,6 +71,13 @@
       "when": 1793869678726,
       "tag": "0009_expense_categories_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793870270457,
+      "tag": "0010_job_line_quantity",
+      "breakpoints": true
     }
   ]
 }

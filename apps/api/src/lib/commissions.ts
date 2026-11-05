@@ -4,7 +4,8 @@ import type { DbOrTx } from '../db/client.js';
 import { commissionPayouts, commissions, jobLineAttendants, jobLines } from '../db/schema.js';
 
 /** What the attendants on one line earn between them: the service's rule as it was when it was sold. */
-const lineCommission = (price: number, kind: 'percent' | 'fixed', value: number) => (kind === 'percent' ? percentOf(price, value) : value);
+const lineCommission = (price: number, quantity: number, kind: 'percent' | 'fixed', value: number) =>
+  kind === 'percent' ? percentOf(price, value) : value * quantity;
 
 /**
  * Split a whole-pesewa amount by shares in basis points so the pieces add back up exactly.
@@ -26,6 +27,7 @@ export async function earnCommissions(tx: DbOrTx, jobId: number, at?: Date): Pro
     .select({
       lineId: jobLines.id,
       price: jobLines.priceAtSale,
+      quantity: jobLines.quantity,
       kind: jobLines.commissionKindAtSale,
       value: jobLines.commissionValueAtSale,
       lineAttendantId: jobLineAttendants.id,
@@ -41,7 +43,7 @@ export async function earnCommissions(tx: DbOrTx, jobId: number, at?: Date): Pro
 
   const values = [...byLine.values()].flatMap((people) => {
     const first = people[0]!;
-    const amounts = splitByShares(lineCommission(first.price, first.kind, first.value), people.map((p) => p.shareBp));
+    const amounts = splitByShares(lineCommission(first.price, first.quantity, first.kind, first.value), people.map((p) => p.shareBp));
     return people.map((p, i) => ({ lineAttendantId: p.lineAttendantId, amount: amounts[i]!, ...(at ? { createdAt: at } : {}) }));
   });
   if (values.length > 0) await tx.insert(commissions).values(values).onConflictDoNothing();

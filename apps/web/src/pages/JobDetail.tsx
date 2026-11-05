@@ -15,7 +15,7 @@ import {
   type JobHistoryEntry,
 } from '@niinas/shared';
 import { Plate } from '../components/Plate';
-import { AttendantPicker, StatusPill, sharedNote, useAttendants, useServices } from '../components/JobBits';
+import { AttendantPicker, QuantityStepper, StatusPill, sharedNote, useAttendants, useServices } from '../components/JobBits';
 import { SlideToConfirm } from '../components/SlideToConfirm';
 import { TipPanel } from '../components/TipPanel';
 import { useJobSteps, type JobStep } from '../components/JobActions';
@@ -112,6 +112,7 @@ function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: bool
   const toast = useToast();
   const [serviceId, setServiceId] = useState<number | null>(null);
   const [ids, setIds] = useState<number[]>([]);
+  const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const onJob = new Set(job.lines.map((l) => l.serviceId));
   const options = (services.data?.services ?? []).filter((s) => !onJob.has(s.id));
@@ -123,13 +124,14 @@ function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: bool
       toast.success('Service added to the job');
       setServiceId(null);
       setIds([]);
+      setQuantity(1);
       onClose();
     },
   });
 
   function submit() {
     if (serviceId === null) return setError('Choose a service');
-    const parsed = addLineInput.safeParse({ serviceId, attendantIds: ids });
+    const parsed = addLineInput.safeParse({ serviceId, quantity, attendantIds: ids });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Check the details');
     setError(null);
     save.mutate(parsed.data);
@@ -155,7 +157,11 @@ function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: bool
         ))}
       </div>
       {serviceId !== null && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <QuantityStepper label="of this service" value={quantity} onChange={setQuantity} />
+            {quantity > 1 && <span className="num text-sm text-ink-3">{quantity} × {formatGHS(options.find((o) => o.id === serviceId)?.price ?? 0)}</span>}
+          </div>
           <AttendantPicker label="Attendants" options={attendants.data?.attendants ?? []} value={ids} onChange={setIds} />
           {sharedNote(ids.length) && <p className="text-xs text-ink-3">{sharedNote(ids.length)}</p>}
         </div>
@@ -423,7 +429,10 @@ export function JobDetail() {
           {job.lines.map((l) => (
             <li key={l.id} className="flex items-start gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-ink">{l.name}</p>
+                <p className="font-medium text-ink">
+                  {l.name}
+                  {l.quantity > 1 && <span className="num font-normal text-ink-3"> × {l.quantity}</span>}
+                </p>
                 {l.attendants.length > 0 ? (
                   <p className="text-sm text-ink-2">
                     {l.attendants.map((a) => (l.attendants.length > 1 ? `${a.name} ${a.shareBp / 100}%` : a.name)).join(', ')}

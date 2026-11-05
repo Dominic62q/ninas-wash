@@ -226,7 +226,7 @@ export function createSmsService(opts: { db: Db; gateway: SmsGateway; log?: { er
     if (!template.enabled) return;
 
     const lines = await db
-      .select({ name: services.name })
+      .select({ name: services.name, quantity: jobLines.quantity })
       .from(jobLines)
       .innerJoin(services, eq(services.id, jobLines.serviceId))
       .where(eq(jobLines.jobId, jobId))
@@ -235,7 +235,7 @@ export function createSmsService(opts: { db: Db; gateway: SmsGateway; log?: { er
     const values: Record<Placeholder, string> = {
       name: firstName(ctx.name),
       plate: ctx.plate,
-      services: lines.map((l) => l.name).join(', '),
+      services: lines.map((l) => (l.quantity > 1 ? `${l.name} x${l.quantity}` : l.name)).join(', '),
       total: smsMoney(ctx.total),
       amount: smsMoney(o.paymentAmount ?? 0),
       balance: smsMoney(Math.max(ctx.total - ctx.paid, 0)),

@@ -9,8 +9,12 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 const id = z.number().int().positive();
 const discountField = z.number().int('Use whole pesewas').min(0).max(100_000_000);
 
+export const MAX_LINE_QUANTITY = 50;
+
 export const jobLineInput = z.object({
   serviceId: id,
+  /** How many of it: three seats cleaned, two rugs. */
+  quantity: z.number().int('Use a whole number').min(1, 'At least 1').max(MAX_LINE_QUANTITY, `Up to ${MAX_LINE_QUANTITY}`).default(1),
   /** Who washes it. Can be empty at first ("Assign" later), but a job cannot start until every line has someone. */
   attendantIds: z
     .array(id)

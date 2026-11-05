@@ -203,6 +203,9 @@ export const jobLines = pgTable(
     id: id(),
     jobId: ref('job_id').notNull().references(() => jobs.id),
     serviceId: ref('service_id').notNull().references(() => services.id),
+    /** How many of this service: three seats cleaned, two bags of laundry. */
+    quantity: integer('quantity').notNull().default(1),
+    /** The whole line: the service price at the time of sale times the quantity. */
     priceAtSale: integer('price_at_sale').notNull(),
     commissionKindAtSale: commissionKindEnum('commission_kind_at_sale').notNull(),
     commissionValueAtSale: integer('commission_value_at_sale').notNull(),
@@ -210,6 +213,7 @@ export const jobLines = pgTable(
   },
   (t) => [
     index('job_lines_job_idx').on(t.jobId),
+    check('job_lines_quantity_range', sql`${t.quantity} between 1 and 50`),
     check('job_lines_price_not_negative', sql`${t.priceAtSale} >= 0`),
     check('job_lines_commission_not_negative', sql`${t.commissionValueAtSale} >= 0`),
   ],

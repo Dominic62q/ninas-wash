@@ -118,6 +118,7 @@ async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null> {
     id: line.id,
     serviceId: line.serviceId,
     name,
+    quantity: line.quantity,
     price: line.priceAtSale,
     attendants: workers.filter((w) => w.lineId === line.id).map(({ id: attendantId, name: n, shareBp }) => ({ id: attendantId, name: n, shareBp })),
   }));
@@ -184,13 +185,14 @@ async function activeAttendants(tx: DbOrTx, ids: number[]) {
 }
 
 /** Copies the price and commission rule onto the line, and splits it equally between the people on it. */
-async function insertLine(tx: DbOrTx, jobId: number, service: typeof services.$inferSelect, attendantIds: number[]) {
+async function insertLine(tx: DbOrTx, jobId: number, service: typeof services.$inferSelect, quantity: number, attendantIds: number[]) {
   const [line] = await tx
     .insert(jobLines)
     .values({
       jobId,
       serviceId: service.id,
-      priceAtSale: service.price,
+      quantity,
+      priceAtSale: service.price * quantity,
       commissionKindAtSale: service.commissionKind,
       commissionValueAtSale: service.commissionValue,
     })
@@ -246,7 +248,7 @@ async function cardsFor(db: DbOrTx, rows: CardSource[]): Promise<JobListRow[]> {
   const ids = rows.map((r) => r.job.id);
   const lineRows = ids.length
     ? await db
-        .select({ id: jobLines.id, jobId: jobLines.jobId, service: services.name })
+        .select({ id: jobLines.id, jobId: jobLines.jobId, service: services.name, quantity: jobLines.quantity })
         .from(jobLines)
         .innerJoin(services, eq(services.id, jobLines.serviceId))
         .where(inArray(jobLines.jobId, ids))
@@ -280,7 +282,7 @@ async function cardsFor(db: DbOrTx, rows: CardSource[]): Promise<JobListRow[]> {
       createdAt: job.createdAt.toISOString(),
       startedAt: iso(job.startedAt),
       completedAt: iso(job.completedAt),
-      services: mine.map((l) => l.service),
+      services: mine.map((l) => (l.quantity > 1 ? `${l.service} ×${l.quantity}` : l.service)),
       attendants: [...names],
       needsAttendant: missing,
       total,
@@ -399,7 +401,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         const serviceById = await activeServices(tx, input.lines.map((l) => l.serviceId));
         const attendantById = await activeAttendants(tx, input.lines.flatMap((l) => l.attendantIds));
 
-        const subtotal = input.lines.reduce((sum, l) => sum + serviceById.get(l.serviceId)!.price, 0);
+        const subtotal = input.lines.reduce((sum, l) => sum + serviceById.get(l.serviceId)!.price * l.quantity, 0);
         if (input.discount > subtotal) throw tooHigh();
         if (input.start && input.lines.some((l) => l.attendantIds.length === 0)) throw needsAttendant();
 
@@ -455,7 +457,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
           })
           .returning();
 
-        for (const l of input.lines) await insertLine(tx, job!.id, serviceById.get(l.serviceId)!, l.attendantIds);
+        for (const l of input.lines) await insertLine(tx, job!.id, serviceById.get(l.serviceId)!, l.quantity, l.attendantIds);
 
         await writeAudit(tx, {
           ...actor,
@@ -466,7 +468,8 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
             plate: vehicle!.plate,
             services: input.lines.map((l) => ({
               service: serviceById.get(l.serviceId)!.name,
-              price: serviceById.get(l.serviceId)!.price,
+              quantity: l.quantity,
+              price: serviceById.get(l.serviceId)!.price * l.quantity,
               attendants: l.attendantIds.map((a) => attendantById.get(a)!.name),
             })),
             discount: input.discount,
@@ -507,13 +510,13 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       if (dup) throw conflict('duplicate_line', 'That service is already on this job.');
 
       const service = serviceById.get(input.serviceId)!;
-      await insertLine(tx, id, service, input.attendantIds);
+      await insertLine(tx, id, service, input.quantity, input.attendantIds);
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'job.add_line',
         recordTable: 'jobs',
         recordId: id,
-        after: { service: service.name, price: service.price, attendants: input.attendantIds.map((a) => people.get(a)!.name) },
+        after: { service: service.name, quantity: input.quantity, price: service.price * input.quantity, attendants: input.attendantIds.map((a) => people.get(a)!.name) },
         ip: req.ip,
       });
     });

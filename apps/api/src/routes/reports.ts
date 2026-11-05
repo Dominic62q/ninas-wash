@@ -56,7 +56,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
     const net = jobRow?.net ?? 0;
 
     const byService = await q<{ name: string; count: number; sales: number }>(sql`
-      select s.name, count(*)::int as count, coalesce(sum(l.price_at_sale), 0)::int as sales
+      select s.name, coalesce(sum(l.quantity), 0)::int as count, coalesce(sum(l.price_at_sale), 0)::int as sales
       from job_lines l
       join jobs j on j.id = l.job_id
       join services s on s.id = l.service_id

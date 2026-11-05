@@ -150,7 +150,9 @@ export interface JobLineDto {
   id: number;
   serviceId: number;
   name: string;
-  /** The price when it was sold. Later price changes never touch it. */
+  /** How many of it. */
+  quantity: number;
+  /** The whole line when it was sold: the price times the quantity. Later price changes never touch it. */
   price: number;
   attendants: { id: number; name: string; shareBp: number }[];
 }

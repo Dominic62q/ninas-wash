@@ -16,7 +16,7 @@ import {
 import { Avatar } from '../components/Avatar';
 import { MultiSelect, Select } from '../components/Dropdown';
 import { Plate } from '../components/Plate';
-import { AttendantPicker, sharedNote, useAttendants, useServices } from '../components/JobBits';
+import { AttendantPicker, QuantityStepper, sharedNote, useAttendants, useServices } from '../components/JobBits';
 import { useToast } from '../components/Toast';
 import { Check, Field, FormError, Panel, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
@@ -79,6 +79,8 @@ export function NewJob() {
   const [owner, setOwner] = useState({ name: '', phone: '', okToText: false });
   /** serviceId -> the people on it. A service is on the job when it has a key. */
   const [picked, setPicked] = useState<Map<number, number[]>>(new Map());
+  /** serviceId -> how many. Missing means one. */
+  const [quantities, setQuantities] = useState<Map<number, number>>(new Map());
   const [startNow, setStartNow] = useState(false);
   const [plateSheet, setPlateSheet] = useState(false);
   const sheetInput = useRef<HTMLInputElement>(null);
@@ -114,7 +116,8 @@ export function NewJob() {
 
   const serviceList = services.data?.services ?? [];
   const people = attendants.data?.attendants ?? [];
-  const subtotal = serviceList.filter((s) => picked.has(s.id)).reduce((sum, s) => sum + s.price, 0);
+  const qty = (id: number) => quantities.get(id) ?? 1;
+  const subtotal = serviceList.filter((s) => picked.has(s.id)).reduce((sum, s) => sum + s.price * qty(s.id), 0);
   const discountValue = discount.trim() === '' ? 0 : parseGHS(discount);
   const total = Math.max(subtotal - (discountValue ?? 0), 0);
   /** People on every chosen service, and everyone on at least one. */
@@ -139,12 +142,19 @@ export function NewJob() {
       else next.set(id, []);
       return next;
     });
+    setQuantities((m) => {
+      if (!m.has(id)) return m;
+      const next = new Map(m);
+      next.delete(id);
+      return next;
+    });
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
 
   /** Phone: the services dropdown. A new service starts with the people already on every other service. */
   function setServices(ids: number[]) {
     setPicked((m) => new Map(ids.map((id) => [id, m.get(id) ?? onAll] as const)));
+    setQuantities((m) => new Map([...m].filter(([id]) => ids.includes(id))));
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
 
@@ -166,7 +176,7 @@ export function NewJob() {
       plate,
       makeModel: isNewCar ? makeModel : null,
       carType: isNewCar ? carType || null : null,
-      lines: [...picked].map(([serviceId, attendantIds]) => ({ serviceId, attendantIds })),
+      lines: [...picked].map(([serviceId, attendantIds]) => ({ serviceId, quantity: qty(serviceId), attendantIds })),
       discount: discountValue ?? 0,
       notes,
       start,
@@ -374,10 +384,18 @@ export function NewJob() {
               <div key={s.id} className="rise flex flex-col gap-2.5 border-[1.5px] border-blue bg-blue-50 p-3 max-lg:rounded-[10px] max-lg:border-0">
                 <div className="flex items-center justify-between gap-3">
                   <p className="min-w-0 flex-1 truncate font-medium text-ink">{s.name}</p>
-                  <span className="num font-semibold text-navy">{formatGHS(s.price)}</span>
+                  <span className="num font-semibold text-navy">{formatGHS(s.price * qty(s.id))}</span>
                   <button type="button" aria-label={`Remove ${s.name}`} onClick={() => toggleService(s.id)} className="tap -mr-1 px-1.5 text-lg leading-none text-ink-3">
                     ✕
                   </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <QuantityStepper label={s.name} value={qty(s.id)} onChange={(n) => setQuantities((m) => new Map(m).set(s.id, n))} />
+                  {qty(s.id) > 1 && (
+                    <span className="num text-sm text-ink-3">
+                      {qty(s.id)} × {formatGHS(s.price)}
+                    </span>
+                  )}
                 </div>
                 {people.length === 0 ? (
                   <p className="text-sm text-ink-3">No attendants yet. Add them under Staff and users.</p>
