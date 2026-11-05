@@ -13,6 +13,8 @@ interface AuthState {
   /** True until we know whether anyone is signed in. */
   loading: boolean;
   user: SessionUser | null;
+  /** Everything this person may do, as the server sees it right now. */
+  permissions: Permission[];
   /** The server could not be reached, so we do not know. */
   offline: boolean;
   can: (permission: Permission) => boolean;
@@ -60,9 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       loading: me.isPending,
       user,
+      permissions: me.data?.permissions ?? [],
       offline: me.error instanceof ApiError && me.error.isOffline,
       // The server decides for real. This only hides buttons people cannot use.
-      can: (permission) => (user ? roleCan(user.role, permission) : false),
+      can: (permission) => (me.data ? roleCan(me.data.permissions, permission) : false),
       login: async (input) => {
         await loginMutation.mutateAsync(input);
       },

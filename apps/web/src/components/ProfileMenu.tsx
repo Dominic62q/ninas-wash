@@ -6,8 +6,6 @@ import { Icon } from './Icon';
 import { ThemePicker } from './ThemePicker';
 import { ConfirmPanel, Panel } from './ui';
 
-export const ROLE_LABEL = { cashier: 'Cashier', manager: 'Manager', owner: 'Owner' } as const;
-
 /**
  * The signed-in person: their avatar opens a small sheet with who they are, a way to change
  * their password, and Sign out, which always asks first so a stray tap never drops a till session.
@@ -32,7 +30,7 @@ export function ProfileMenu({ variant }: { variant: 'header' | 'rail' }) {
       {variant === 'header' ? (
         <button
           type="button"
-          aria-label={`${user.name}, ${ROLE_LABEL[user.role]}. Open profile`}
+          aria-label={`${user.name}, ${user.role}. Open profile`}
           aria-haspopup="dialog"
           onClick={() => setMenu(true)}
           className="-mr-1 grid h-11 w-11 flex-none cursor-pointer place-items-center rounded-full active:scale-95 lg:hidden"
@@ -50,7 +48,7 @@ export function ProfileMenu({ variant }: { variant: 'header' | 'rail' }) {
             <Avatar name={user.name} ring />
             <span className="min-w-0 flex-1 leading-tight">
               <span className="block truncate text-sm font-medium text-white">{user.name}</span>
-              {user.name.toLowerCase() !== ROLE_LABEL[user.role].toLowerCase() && <span className="block text-xs text-[#8fa3c7]">{ROLE_LABEL[user.role]}</span>}
+              {user.name.toLowerCase() !== user.role.toLowerCase() && <span className="block text-xs text-[#8fa3c7]">{user.role}</span>}
             </span>
             <span aria-hidden="true" className="text-[#8fa3c7]">
               <Icon name="more" size={16} />
@@ -65,8 +63,8 @@ export function ProfileMenu({ variant }: { variant: 'header' | 'rail' }) {
           <div className="min-w-0">
             <p className="truncate text-lg font-bold leading-tight text-ink">{user.name}</p>
             <p className="text-sm text-ink-3">
-              {ROLE_LABEL[user.role]}
-              {user.username.toLowerCase() !== ROLE_LABEL[user.role].toLowerCase() && (
+              {user.role}
+              {user.username.toLowerCase() !== user.role.toLowerCase() && (
                 <>
                   {' · '}
                   <span className="num">{user.username}</span>
@@ -94,7 +92,7 @@ export function ProfileMenu({ variant }: { variant: 'header' | 'rail' }) {
         open={confirming}
         danger
         title="Sign out?"
-        message="You will need your username and password to get back in."
+        message="You will need your username and password to get back in"
         confirmLabel="Sign out"
         busy={busy}
         onConfirm={() => void signOut()}

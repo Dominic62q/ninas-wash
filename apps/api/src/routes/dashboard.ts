@@ -12,7 +12,7 @@ const UNCLOSED_LOOKBACK_DAYS = 7;
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', { preHandler: app.requireAuth }, async (req): Promise<DashboardDto> => {
     const { db } = app;
-    const role = req.user!.role;
+    const role = req.user!.permissions;
     const day = dayOf();
     const start = new Date(`${day}T00:00:00Z`);
     const end = new Date(start.getTime() + 86_400_000);

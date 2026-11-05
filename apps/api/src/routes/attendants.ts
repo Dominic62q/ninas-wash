@@ -35,7 +35,7 @@ export const attendantRoutes: FastifyPluginAsync = async (app) => {
   // Anyone signed in can see active attendants, to put them on a job.
   app.get('/', { preHandler: app.requireAuth }, async (req) => {
     const { includeInactive } = list.parse(req.query);
-    const showAll = includeInactive === '1' && can(req.user!.role, 'attendant.manage');
+    const showAll = includeInactive === '1' && can(req.user!.permissions, 'attendant.manage');
     const rows = await app.db
       .select({ attendant: attendants, jobs: jobsThisWeek })
       .from(attendants)

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { loadConfig } from '../src/config.js';
 import { createDb } from '../src/db/client.js';
-import { users } from '../src/db/schema.js';
+import { roles, users } from '../src/db/schema.js';
 import { writeAudit } from '../src/lib/audit.js';
 import { hashPassword } from '../src/lib/password.js';
 
@@ -22,6 +22,12 @@ const people = [
 const credentialsFile = fileURLToPath(new URL('../../../.dev-credentials.txt', import.meta.url));
 const { db, pool } = createDb(loadConfig().DATABASE_URL);
 
+const roleIds = {} as Record<'owner' | 'manager' | 'cashier', number>;
+for (const key of ['owner', 'manager', 'cashier'] as const) {
+  const [r] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, key[0]!.toUpperCase() + key.slice(1)));
+  roleIds[key] = r!.id;
+}
+
 for (const person of people) {
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.username, person.username));
   if (existing) {
@@ -32,7 +38,7 @@ for (const person of people) {
   await db.transaction(async (tx) => {
     const [created] = await tx
       .insert(users)
-      .values({ ...person, passwordHash: await hashPassword(password) })
+      .values({ name: person.name, username: person.username, roleId: roleIds[person.role], passwordHash: await hashPassword(password) })
       .returning({ id: users.id });
     await writeAudit(tx, {
       action: 'user.create',

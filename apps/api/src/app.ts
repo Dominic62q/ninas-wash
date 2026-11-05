@@ -22,6 +22,7 @@ import { jobRoutes } from './routes/jobs.js';
 import { serviceRoutes } from './routes/services.js';
 import { smsRoutes } from './routes/sms.js';
 import { tipRoutes } from './routes/tips.js';
+import { roleRoutes } from './routes/roles.js';
 import { userRoutes } from './routes/users.js';
 
 declare module 'fastify' {
@@ -98,7 +99,7 @@ export async function buildApp(opts: { db: Db; config: Config; logger?: boolean;
 
   app.decorate('requirePermission', (permission: Permission) => async (req: FastifyRequest) => {
     if (!req.user) throw unauthorized();
-    if (!can(req.user.role, permission)) throw forbidden();
+    if (!can(req.user.permissions, permission)) throw forbidden();
   });
 
   app.setErrorHandler((error, req, reply) => {
@@ -130,6 +131,7 @@ export async function buildApp(opts: { db: Db; config: Config; logger?: boolean;
   await app.register(serviceRoutes, { prefix: '/api/services' });
   await app.register(attendantRoutes, { prefix: '/api/attendants' });
   await app.register(userRoutes, { prefix: '/api/users' });
+  await app.register(roleRoutes, { prefix: '/api/roles' });
   await app.register(customerRoutes, { prefix: '/api/customers' });
   await app.register(vehicleRoutes, { prefix: '/api/vehicles' });
   await app.register(jobRoutes, { prefix: '/api/jobs' });

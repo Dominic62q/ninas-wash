@@ -7,6 +7,7 @@ import { createDb } from '../src/db/client.js';
 import { smsMessages, users } from '../src/db/schema.js';
 import { hashPassword } from '../src/lib/password.js';
 import type { GatewayResult, SmsGateway } from '../src/lib/sms.js';
+import { roleIdFor } from './roles.js';
 
 const PASSWORD = 'correct horse battery';
 const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: inject('dbUrl') });
@@ -28,7 +29,7 @@ const gateway: SmsGateway = {
 const OK: GatewayResult = { status: 'sent', code: '1701', ref: 'job-1', error: null };
 
 async function makeUser(username: string, role: 'cashier' | 'manager' | 'owner') {
-  await db.insert(users).values({ name: `${role} ${username}`, username, role, passwordHash: await hashPassword(PASSWORD) });
+  await db.insert(users).values({ name: `${role} ${username}`, username, roleId: await roleIdFor(db, role), passwordHash: await hashPassword(PASSWORD) });
 }
 
 async function signIn(username: string) {

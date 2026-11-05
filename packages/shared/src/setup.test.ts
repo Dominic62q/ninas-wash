@@ -50,10 +50,10 @@ describe('service input', () => {
 
 describe('people input', () => {
   it('lowercases usernames and rejects odd ones', () => {
-    expect(createUserInput.parse({ name: 'Esi', username: ' Esi.Cashier ', role: 'cashier' }).username).toBe('esi.cashier');
-    expect(createUserInput.safeParse({ name: 'Esi', username: 'a b', role: 'cashier' }).success).toBe(false);
-    expect(createUserInput.safeParse({ name: 'Esi', username: 'ab', role: 'cashier' }).success).toBe(false);
-    expect(createUserInput.safeParse({ name: 'Esi', username: 'esi', role: 'boss' }).success).toBe(false);
+    expect(createUserInput.parse({ name: 'Esi', username: ' Esi.Cashier ', roleId: 2 }).username).toBe('esi.cashier');
+    expect(createUserInput.safeParse({ name: 'Esi', username: 'a b', roleId: 2 }).success).toBe(false);
+    expect(createUserInput.safeParse({ name: 'Esi', username: 'ab', roleId: 2 }).success).toBe(false);
+    expect(createUserInput.safeParse({ name: 'Esi', username: 'esi', roleId: 0 }).success).toBe(false);
   });
 
   it('wants a new password of at least 8 characters', () => {

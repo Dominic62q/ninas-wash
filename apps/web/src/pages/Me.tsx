@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
-import { ROLE_LABEL } from '../components/ProfileMenu';
 import { ThemePicker } from '../components/ThemePicker';
 import { ConfirmPanel, Pill } from '../components/ui';
 import { useAuth } from '../lib/auth';
@@ -31,10 +30,10 @@ export function Me() {
       <section aria-label="Your profile" className="flex items-center gap-3.5 rounded-[14px] bg-surface p-4 shadow-card">
         <Avatar name={user.name} size="lg" />
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-lg font-bold text-navy">{user.name}</p>
+          <p className="truncate text-lg font-medium text-navy">{user.name}</p>
           <p className="mt-1.5 flex items-center gap-2 text-[13px] text-ink-3">
-            <Pill tone="blue">{ROLE_LABEL[user.role]}</Pill>
-            {user.username.toLowerCase() !== ROLE_LABEL[user.role].toLowerCase() && <span className="num truncate">{user.username}</span>}
+            <Pill tone="blue">{user.role}</Pill>
+            {user.username.toLowerCase() !== user.role.toLowerCase() && <span className="num truncate">{user.username}</span>}
           </p>
         </div>
       </section>
@@ -46,7 +45,7 @@ export function Me() {
               <span className={icon}>
                 <Icon name={item.icon} size={18} />
               </span>
-              <span className="flex-1 font-semibold">{item.label}</span>
+              <span className="flex-1 font-medium">{item.label}</span>
               <span aria-hidden="true" className="text-ink-3">
                 ›
               </span>
@@ -58,7 +57,7 @@ export function Me() {
             <span className={icon}>
               <Icon name="lock" size={18} />
             </span>
-            <span className="flex-1 font-semibold">Change password</span>
+            <span className="flex-1 font-medium">Change password</span>
             <span aria-hidden="true" className="text-ink-3">
               ›
             </span>
@@ -67,7 +66,7 @@ export function Me() {
       </ul>
 
       <section aria-label="Appearance" className="flex items-center justify-between gap-3 rounded-[14px] bg-surface px-3.5 py-3 shadow-card">
-        <span className="font-semibold">Appearance</span>
+        <span className="font-medium">Appearance</span>
         <div className="w-[190px]">
           <ThemePicker />
         </div>
@@ -82,7 +81,7 @@ export function Me() {
         open={confirming}
         danger
         title="Sign out?"
-        message="You will need your username and password to get back in."
+        message="You will need your username and password to get back in"
         confirmLabel="Sign out"
         busy={busy}
         onConfirm={() => void signOut()}

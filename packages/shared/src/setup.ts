@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { ROLES } from './roles.js';
 import { normalizePhone } from './phone.js';
 import { normalizePlate } from './plate.js';
 
@@ -78,13 +77,13 @@ export const usernameField = z
 export const createUserInput = z.object({
   name: z.string().trim().min(1, 'Enter the name').max(80),
   username: usernameField,
-  role: z.enum(ROLES),
+  roleId: z.number().int().positive('Pick a role'),
 });
 export type CreateUserInput = z.infer<typeof createUserInput>;
 
 export const updateUserInput = z.object({
   name: z.string().trim().min(1, 'Enter the name').max(80).optional(),
-  role: z.enum(ROLES).optional(),
+  roleId: z.number().int().positive('Pick a role').optional(),
   active: z.boolean().optional(),
 });
 export type UpdateUserInput = z.infer<typeof updateUserInput>;

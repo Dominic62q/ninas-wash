@@ -20,6 +20,7 @@ import { Me } from './pages/Me';
 import { Money } from './pages/Money';
 import { NewJob } from './pages/NewJob';
 import { Reports } from './pages/Reports';
+import { Roles } from './pages/Roles';
 import { Services } from './pages/Services';
 import { Texts } from './pages/Texts';
 import { SignIn } from './pages/SignIn';
@@ -50,6 +51,7 @@ const SCREENS: Record<string, ReactNode> = {
   '/reports': <Reports />,
   '/sms': <Texts />,
   '/activity': <ActivityLog />,
+  '/roles': <Roles />,
 };
 
 /** A page that needs a permission. Without it, the person lands on the dashboard instead. */

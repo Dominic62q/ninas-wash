@@ -3,7 +3,7 @@ import type { PgColumn } from 'drizzle-orm/pg-core';
 import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { can, closeInput, formatGHS, reasonInput, type DailyCloseHistory, type DailyCloseRow, type DaySummary, type Role } from '@niinas/shared';
+import { can, closeInput, formatGHS, reasonInput, type DailyCloseHistory, type DailyCloseRow, type DaySummary, type Permission } from '@niinas/shared';
 import type { DbOrTx } from '../db/client.js';
 import { commissionPayouts, dailyCloses, expenses, jobs, payments, tipHandouts, tips, users } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
@@ -116,7 +116,7 @@ const closeRows = async (db: DbOrTx, where?: ReturnType<typeof and>, limit = 1):
   }));
 };
 
-export async function summaryFor(db: DbOrTx, day: string, role: Role): Promise<DaySummary> {
+export async function summaryFor(db: DbOrTx, day: string, role: readonly Permission[]): Promise<DaySummary> {
   const f = await figures(db, day);
   const [row] = await closeRows(db, eq(dailyCloses.day, day));
   const [before] = await db
@@ -151,7 +151,7 @@ export const dailyCloseRoutes: FastifyPluginAsync = async (app) => {
     const { day } = z.object({ day: dayParam.optional() }).parse(req.query);
     const wanted = day ?? dayOf();
     if (wanted > dayOf()) throw new HttpError(400, 'bad_date', 'That day has not happened yet.');
-    return { summary: await summaryFor(app.db, wanted, req.user!.role) };
+    return { summary: await summaryFor(app.db, wanted, req.user!.permissions) };
   });
 
   app.get('/history', { preHandler: app.requirePermission('dailyclose.see_expected') }, async (): Promise<DailyCloseHistory> => {
@@ -174,7 +174,7 @@ export const dailyCloseRoutes: FastifyPluginAsync = async (app) => {
       const expected = input.openingFloat + f.cash.expectedBeforeFloat;
       const difference = input.countedCash - expected;
       if (difference !== 0 && !input.note) {
-        const how = can(req.user!.role, 'dailyclose.see_expected')
+        const how = can(req.user!.permissions, 'dailyclose.see_expected')
           ? `The count is ${formatGHS(Math.abs(difference))} ${difference < 0 ? 'short' : 'over'}.`
           : 'The count is not what the drawer should hold.';
         throw new HttpError(400, 'note_needed', `${how} Count again, or say why in the note.`);
@@ -208,7 +208,7 @@ export const dailyCloseRoutes: FastifyPluginAsync = async (app) => {
         ip: req.ip,
       });
     });
-    return reply.status(201).send({ summary: await summaryFor(app.db, day, req.user!.role) });
+    return reply.status(201).send({ summary: await summaryFor(app.db, day, req.user!.permissions) });
   });
 
   // Only a manager or owner can open a closed day again, and has to say why. Closing it again replaces the count.
@@ -234,6 +234,6 @@ export const dailyCloseRoutes: FastifyPluginAsync = async (app) => {
         ip: req.ip,
       });
     });
-    return { summary: await summaryFor(app.db, day, req.user!.role) };
+    return { summary: await summaryFor(app.db, day, req.user!.permissions) };
   });
 };

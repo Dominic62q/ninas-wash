@@ -4,6 +4,7 @@ import { loadConfig } from '../src/config.js';
 import { createDb } from '../src/db/client.js';
 import { auditLogs, jobLines, jobs, payments, services, users, vehicles } from '../src/db/schema.js';
 import { writeAudit } from '../src/lib/audit.js';
+import { roleIdFor } from './roles.js';
 
 const { db, pool } = createDb(loadConfig({ NODE_ENV: 'test', DATABASE_URL: inject('dbUrl') }).DATABASE_URL);
 
@@ -25,7 +26,7 @@ async function refusedWith(run: () => Promise<unknown>): Promise<string> {
 beforeAll(async () => {
   const [u] = await db
     .insert(users)
-    .values({ name: 'Rules tester', username: 'rules.tester', role: 'manager', passwordHash: 'x' })
+    .values({ name: 'Rules tester', username: 'rules.tester', roleId: await roleIdFor(db, 'manager'), passwordHash: 'x' })
     .returning({ id: users.id });
   userId = u!.id;
   const [v] = await db.insert(vehicles).values({ plate: 'GN 1-23', plateKey: 'GN123' }).returning({ id: vehicles.id });

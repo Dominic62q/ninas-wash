@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, lt, ne, sql } from 'drizzle-orm';
-import type { Role } from '@niinas/shared';
+import { permissionsOf, type Permission } from '@niinas/shared';
 import type { Config } from '../config.js';
 import type { Db, DbOrTx } from '../db/client.js';
-import { sessions, users } from '../db/schema.js';
+import { roles, sessions, users } from '../db/schema.js';
 
 export const SESSION_COOKIE = 'niinas_session';
 
@@ -17,9 +17,23 @@ export interface AuthedUser {
   id: number;
   name: string;
   username: string;
-  role: Role;
+  roleId: number;
+  /** The role's name, for showing on screen. */
+  role: string;
+  /** What they may do right now. Read from their role on every request, so a change to a role applies at once. */
+  permissions: Permission[];
   mustChangePassword: boolean;
 }
+
+/** The part of the signed-in person that the browser is told about. */
+export const publicUser = (u: AuthedUser) => ({
+  id: u.id,
+  name: u.name,
+  username: u.username,
+  role: u.role,
+  roleId: u.roleId,
+  mustChangePassword: u.mustChangePassword,
+});
 
 export async function createSession(db: Db, userId: number, config: Config) {
   const token = randomBytes(32).toString('base64url');
@@ -40,11 +54,15 @@ export async function findSession(db: Db, token: string, config: Config): Promis
       id: users.id,
       name: users.name,
       username: users.username,
-      role: users.role,
+      roleId: roles.id,
+      roleName: roles.name,
+      roleLocked: roles.locked,
+      rolePermissions: roles.permissions,
       mustChangePassword: users.mustChangePassword,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
+    .innerJoin(roles, eq(roles.id, users.roleId))
     .where(and(eq(sessions.id, id), gt(sessions.expiresAt, now), gt(sessions.lastSeenAt, idleCutoff), eq(users.active, true)))
     .limit(1);
   if (!row) return null;
@@ -56,7 +74,9 @@ export async function findSession(db: Db, token: string, config: Config): Promis
     id: row.id,
     name: row.name,
     username: row.username,
-    role: row.role,
+    roleId: row.roleId,
+    role: row.roleName,
+    permissions: permissionsOf({ locked: row.roleLocked, permissions: row.rolePermissions }),
     mustChangePassword: row.mustChangePassword,
   };
 }

@@ -6,6 +6,7 @@ import { loadConfig } from '../src/config.js';
 import { createDb } from '../src/db/client.js';
 import { jobLineAttendants, jobLines, jobs, payments, users } from '../src/db/schema.js';
 import { hashPassword } from '../src/lib/password.js';
+import { roleIdFor } from './roles.js';
 
 const PASSWORD = 'correct horse battery';
 const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: inject('dbUrl') });
@@ -17,7 +18,7 @@ const nextIp = () => `10.3.${Math.floor(++ipCounter / 250)}.${ipCounter % 250}`;
 async function makeUser(username: string, role: 'cashier' | 'manager' | 'owner') {
   const [row] = await db
     .insert(users)
-    .values({ name: `${role} ${username}`, username, role, passwordHash: await hashPassword(PASSWORD) })
+    .values({ name: `${role} ${username}`, username, roleId: await roleIdFor(db, role), passwordHash: await hashPassword(PASSWORD) })
     .returning();
   return row!;
 }

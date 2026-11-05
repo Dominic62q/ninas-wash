@@ -1,4 +1,3 @@
-import type { Role } from './roles.js';
 
 /** What the API sends back for Phase 1 screens. Dates are ISO text. Money is whole pesewas. */
 
@@ -37,7 +36,11 @@ export interface UserDto {
   id: number;
   name: string;
   username: string;
-  role: Role;
+  roleId: number;
+  /** The role's name. */
+  role: string;
+  /** They hold the owner role, which nobody else can change. */
+  roleLocked: boolean;
   active: boolean;
   mustChangePassword: boolean;
   lastLoginAt: string | null;

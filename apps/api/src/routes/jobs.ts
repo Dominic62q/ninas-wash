@@ -680,7 +680,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const owed = Math.max((await subtotalOf(tx, id)) - job.discount, 0) - (await paidOf(tx, id));
       const withBalance = owed > 0;
       if (withBalance) {
-        if (!can(req.user!.role, 'job.dispatch_with_balance')) {
+        if (!can(req.user!.permissions, 'job.dispatch_with_balance')) {
           throw new HttpError(403, 'balance_owed', `${formatGHS(owed)} is still owed. A manager can release the car.`);
         }
         if (!note) throw new HttpError(400, 'note_needed', 'Say why the car is leaving with a balance.');

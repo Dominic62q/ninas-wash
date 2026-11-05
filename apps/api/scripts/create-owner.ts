@@ -10,13 +10,13 @@ import { createUserInput } from '@niinas/shared';
 import { eq } from 'drizzle-orm';
 import { loadConfig } from '../src/config.js';
 import { createDb } from '../src/db/client.js';
-import { users } from '../src/db/schema.js';
+import { roles, users } from '../src/db/schema.js';
 import { writeAudit } from '../src/lib/audit.js';
 import { temporaryPassword } from '../src/lib/helpers.js';
 import { hashPassword } from '../src/lib/password.js';
 
 const [name, username] = process.argv.slice(2);
-const parsed = createUserInput.safeParse({ name, username, role: 'owner' });
+const parsed = createUserInput.safeParse({ name, username, roleId: 1 });
 if (!parsed.success) {
   console.error('Usage: npm run db:create-owner -w @niinas/api -- "Full Name" username');
   console.error(parsed.error.issues[0]?.message ?? '');
@@ -31,11 +31,18 @@ if (taken) {
   process.exit(1);
 }
 
+const [ownerRole] = await db.select({ id: roles.id }).from(roles).where(eq(roles.locked, true));
+if (!ownerRole) {
+  console.error('The owner role is missing. Run the migrations first.');
+  await pool.end();
+  process.exit(1);
+}
+
 const password = temporaryPassword();
 await db.transaction(async (tx) => {
   const [created] = await tx
     .insert(users)
-    .values({ ...parsed.data, passwordHash: await hashPassword(password), mustChangePassword: true })
+    .values({ name: parsed.data.name, username: parsed.data.username, roleId: ownerRole.id, passwordHash: await hashPassword(password), mustChangePassword: true })
     .returning({ id: users.id });
   await writeAudit(tx, {
     action: 'user.create',

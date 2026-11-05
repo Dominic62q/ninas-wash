@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { ROLES } from './roles.js';
 
 export const loginInput = z.object({
   username: z.string().trim().min(1, 'Enter your username').max(64),
@@ -12,7 +11,9 @@ export const sessionUser = z.object({
   id: z.number().int(),
   name: z.string(),
   username: z.string(),
-  role: z.enum(ROLES),
+  /** The name of their role, for showing on screen. */
+  role: z.string(),
+  roleId: z.number().int(),
   /** True after a first sign-in or a reset: the person must choose their own password before anything else. */
   mustChangePassword: z.boolean(),
 });

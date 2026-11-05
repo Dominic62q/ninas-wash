@@ -6,6 +6,7 @@ import { loadConfig } from '../src/config.js';
 import { createDb } from '../src/db/client.js';
 import { auditLogs, users } from '../src/db/schema.js';
 import { hashPassword } from '../src/lib/password.js';
+import { roleIdFor } from './roles.js';
 
 const PASSWORD = 'correct horse battery';
 const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: inject('dbUrl') });
@@ -20,7 +21,7 @@ async function makeUser(username: string, role: 'cashier' | 'manager' | 'owner',
   await db.insert(users).values({
     name: `${role} ${username}`,
     username,
-    role,
+    roleId: await roleIdFor(db, role),
     active,
     passwordHash: await hashPassword(PASSWORD),
   });
@@ -54,7 +55,7 @@ describe('signing in', () => {
     const res = await login('t.cashier');
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.user).toMatchObject({ username: 't.cashier', role: 'cashier' });
+    expect(body.user).toMatchObject({ username: 't.cashier', role: 'Cashier' });
     expect(body.user.passwordHash).toBeUndefined();
     expect(body.permissions).toContain('job.create');
     expect(body.permissions).not.toContain('job.void');
@@ -110,7 +111,7 @@ describe('sessions', () => {
     const cookie = cookieOf(await login('t.manager'));
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
     expect(me.statusCode).toBe(200);
-    expect(me.json().user.role).toBe('manager');
+    expect(me.json().user.role).toBe('Manager');
 
     const out = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { cookie } });
     expect(out.statusCode).toBe(200);

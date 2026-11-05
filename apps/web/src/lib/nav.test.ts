@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { can, type Role } from '@niinas/shared';
+import { DEFAULT_ROLES, PERMISSION_KEYS, can, type Permission } from '@niinas/shared';
 import { BUILT_PHASE, meFor, moneyFor, navFor } from './nav';
 
-const labelsFor = (role: Role) => navFor((p) => can(role, p)).map((i) => i.label);
+type Role = 'cashier' | 'manager' | 'owner';
+const PERMISSIONS: Record<Role, readonly Permission[]> = { cashier: DEFAULT_ROLES.Cashier, manager: DEFAULT_ROLES.Manager, owner: PERMISSION_KEYS };
+const canAs = (role: Role) => (p: Permission) => can(PERMISSIONS[role], p);
+const labelsFor = (role: Role) => navFor(canAs(role)).map((i) => i.label);
 
 describe('menu by role', () => {
   it('shows a cashier the daily screens only', () => {
@@ -27,7 +30,7 @@ describe('menu by role', () => {
 
   it('puts every finished screen on one of the phone tabs, none twice', () => {
     for (const role of ['cashier', 'manager', 'owner'] as const) {
-      const items = navFor((p) => can(role, p));
+      const items = navFor(canAs(role));
       // Home and Jobs are tabs of their own; Money and Me list the rest.
       const tabs = items.filter((i) => i.path === '/' || i.path === '/jobs').map((i) => i.label);
       const money = moneyFor(items).map((i) => i.label);
@@ -35,8 +38,8 @@ describe('menu by role', () => {
       const finished = items.filter((i) => i.phase <= BUILT_PHASE).map((i) => i.label);
       expect([...tabs, ...money, ...me].sort()).toEqual(finished.sort());
     }
-    expect(moneyFor(navFor((p) => can('cashier', p))).map((i) => i.label)).toEqual(['Expenses', 'Tips', 'Daily close']);
-    expect(meFor(navFor((p) => can('cashier', p))).map((i) => i.label)).toEqual(['Customers']);
+    expect(moneyFor(navFor(canAs('cashier'))).map((i) => i.label)).toEqual(['Expenses', 'Tips', 'Daily close']);
+    expect(meFor(navFor(canAs('cashier'))).map((i) => i.label)).toEqual(['Customers']);
   });
 
   it('never gives a cashier something a manager does not also have', () => {

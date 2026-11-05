@@ -6,6 +6,7 @@ import { loadConfig } from '../src/config.js';
 import { createDb } from '../src/db/client.js';
 import { auditLogs, jobs, payments, users, vehicles } from '../src/db/schema.js';
 import { hashPassword } from '../src/lib/password.js';
+import { roleIdFor } from './roles.js';
 
 const PASSWORD = 'correct horse battery';
 const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: inject('dbUrl') });
@@ -17,7 +18,7 @@ const nextIp = () => `10.2.${Math.floor(++ipCounter / 250)}.${ipCounter % 250}`;
 async function makeUser(username: string, role: 'cashier' | 'manager' | 'owner') {
   const [row] = await db
     .insert(users)
-    .values({ name: `${role} ${username}`, username, role, passwordHash: await hashPassword(PASSWORD) })
+    .values({ name: `${role} ${username}`, username, roleId: await roleIdFor(db, role), passwordHash: await hashPassword(PASSWORD) })
     .returning();
   return row!;
 }
@@ -196,12 +197,12 @@ describe('attendants', () => {
 
 describe('users and passwords', () => {
   it('creates a user with a one-time password that must be replaced at first sign-in', async () => {
-    expect((await call(manager, 'POST', '/api/users', { name: 'New', username: 'new.person', role: 'cashier' })).statusCode).toBe(403);
+    expect((await call(manager, 'POST', '/api/users', { name: 'New', username: 'new.person', roleId: await roleIdFor(db, 'cashier') })).statusCode).toBe(403);
 
-    const created = await call(owner, 'POST', '/api/users', { name: 'Efua Boateng', username: 'Efua.Boateng', role: 'cashier' });
+    const created = await call(owner, 'POST', '/api/users', { name: 'Efua Boateng', username: 'Efua.Boateng', roleId: await roleIdFor(db, 'cashier') });
     expect(created.statusCode).toBe(201);
     const { user, temporaryPassword } = created.json();
-    expect(user).toMatchObject({ username: 'efua.boateng', role: 'cashier', mustChangePassword: true });
+    expect(user).toMatchObject({ username: 'efua.boateng', role: 'Cashier', mustChangePassword: true });
     expect(temporaryPassword).toMatch(/^[A-Za-z0-9]{12}$/);
 
     // The password is never stored in the audit trail.
@@ -228,10 +229,10 @@ describe('users and passwords', () => {
   });
 
   it('refuses a duplicate username and a bad username', async () => {
-    const dup = await call(owner, 'POST', '/api/users', { name: 'Again', username: 'P1.Cashier', role: 'cashier' });
+    const dup = await call(owner, 'POST', '/api/users', { name: 'Again', username: 'P1.Cashier', roleId: await roleIdFor(db, 'cashier') });
     expect(dup.statusCode).toBe(409);
     expect(dup.json().error.code).toBe('duplicate_username');
-    const bad = await call(owner, 'POST', '/api/users', { name: 'Again', username: 'a b', role: 'cashier' });
+    const bad = await call(owner, 'POST', '/api/users', { name: 'Again', username: 'a b', roleId: await roleIdFor(db, 'cashier') });
     expect(bad.statusCode).toBe(400);
   });
 
@@ -277,20 +278,20 @@ describe('users and passwords', () => {
   });
 
   it('keeps people from locking out the business', async () => {
-    const self = await call(owner, 'PATCH', `/api/users/${ownerId}`, { role: 'manager' });
+    const self = await call(owner, 'PATCH', `/api/users/${ownerId}`, { roleId: await roleIdFor(db, 'manager') });
     expect(self.statusCode).toBe(403);
     expect((await call(owner, 'PATCH', `/api/users/${ownerId}`, { active: false })).statusCode).toBe(403);
 
     // A second owner may step down; the very last one may not.
     const second = await makeUser('p1.owner2', 'owner');
     const secondCookie = (await signIn('p1.owner2')).cookie;
-    const demoteSecond = await call(owner, 'PATCH', `/api/users/${second.id}`, { role: 'manager' });
+    const demoteSecond = await call(owner, 'PATCH', `/api/users/${second.id}`, { roleId: await roleIdFor(db, 'manager') });
     expect(demoteSecond.statusCode).toBe(200);
     expect((await call(secondCookie, 'GET', '/api/auth/me')).statusCode).toBe(200);
 
     // every other owner in the table is switched off by the first owner, then the last is protected
-    await db.update(users).set({ role: 'manager' }).where(eq(users.role, 'owner'));
-    await db.update(users).set({ role: 'owner' }).where(eq(users.id, ownerId));
+    await db.update(users).set({ roleId: await roleIdFor(db, 'manager') }).where(eq(users.roleId, await roleIdFor(db, 'owner')));
+    await db.update(users).set({ roleId: await roleIdFor(db, 'owner') }).where(eq(users.id, ownerId));
     const { cookie: soloCookie } = await signIn('p1.owner');
     const helper = await makeUser('p1.owner3', 'owner');
     expect((await call(soloCookie, 'PATCH', `/api/users/${helper.id}`, { active: false })).statusCode).toBe(200);

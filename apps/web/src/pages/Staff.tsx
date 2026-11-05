@@ -1,23 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {
-  ROLES,
   attendantInput,
   createUserInput,
   formatPhone,
+  outranks,
   type AttendantDto,
-  type Role,
   type TemporaryPassword,
   type UserDto,
 } from '@niinas/shared';
 import { Avatar } from '../components/Avatar';
+import { Select } from '../components/Dropdown';
 import { useToast } from '../components/Toast';
-import { Check, Choice, ConfirmPanel, EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, errorMessage } from '../components/ui';
+import { Check, ConfirmPanel, EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { plural, shortDate } from '../lib/format';
-
-const ROLE_LABEL: Record<Role, string> = { cashier: 'Cashier', manager: 'Manager', owner: 'Owner' };
+import { useAssignableRoles, useRoles } from '../lib/useRoles';
 
 // ---- attendants ---------------------------------------------------------------
 
@@ -126,7 +125,7 @@ function Attendants({ shown }: { shown: boolean }) {
                   <Avatar name={a.name} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={`block truncate font-bold ${a.active ? 'text-ink' : 'text-ink-3'}`}>{a.name}</span>
+                  <span className={`block truncate font-medium ${a.active ? 'text-ink' : 'text-ink-3'}`}>{a.name}</span>
                   <span className="block truncate text-sm text-ink-3">
                     {a.phone ? formatPhone(a.phone) : 'No phone'}
                     <span className="lg:hidden"> · {a.active ? plural(a.jobsThisWeek, 'job') : `left ${shortDate(a.leftOn)}`}</span>
@@ -159,7 +158,7 @@ function TemporaryPasswordPanel({ who, password, onClose }: { who: string; passw
         Give this to <strong className="text-ink">{who}</strong>. They choose their own at first sign-in.
       </p>
       <p className="num select-all border border-line bg-band px-4 py-4 text-center font-mono text-[28px] font-bold tracking-[0.12em] text-navy">{password}</p>
-      <p className="border-l-4 border-amber bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber">
+      <p className="border-l-4 border-amber bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber">
         Shown once. If lost, reset it again.
       </p>
       <div className="flex gap-3">
@@ -193,10 +192,16 @@ function UserForm({
   const { user: me } = useAuth();
   const [name, setName] = useState(user?.name ?? '');
   const [username, setUsername] = useState(user?.username ?? '');
-  const [role, setRole] = useState<Role>(user?.role ?? 'cashier');
+  const { assignable } = useAssignableRoles();
+  /** The chosen role's id. Empty until the list arrives, then the person with the least access is the safe starting point. */
+  const [picked, setPicked] = useState<string>(user ? String(user.roleId) : '');
   const [active, setActive] = useState(user?.active ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const isSelf = user !== null && me?.id === user.id;
+  // Only roles that do no more than you can. Whoever is being edited keeps their current role in the list.
+  const options = [...assignable];
+  if (user && !options.some((o) => o.id === user.roleId)) options.unshift({ id: user.roleId, name: user.role, locked: user.roleLocked, permissions: [], members: 0 });
+  const initial = String(options.slice().sort((a, b) => a.permissions.length - b.permissions.length)[0]?.id ?? '');
   const toast = useToast();
   /** Switching someone off or changing their role takes effect at once, so it asks first. */
   const [risky, setRisky] = useState<{ body: unknown; title: string; message: string; label: string } | null>(null);
@@ -222,17 +227,19 @@ function UserForm({
       setErrors({});
       // Your own role and status are not sent, so the server never has to refuse them.
       if (isSelf) return save.mutate({ name });
-      const body = { name, role, active };
+      const roleId = Number(picked || user.roleId);
+      const body = { name, roleId, active };
       const first = name.trim().split(/\s+/)[0] ?? 'This person';
+      const nextRole = options.find((o) => o.id === roleId)?.name ?? 'another role';
       if (user.active && !active) {
         return setRisky({ body, title: `Switch off ${first}?`, message: `${name.trim()} is signed out now and cannot sign in until you switch them back on.`, label: 'Switch off' });
       }
-      if (role !== user.role) {
-        return setRisky({ body, title: `Make ${first} a ${ROLE_LABEL[role].toLowerCase()}?`, message: `${name.trim()} goes from ${ROLE_LABEL[user.role].toLowerCase()} to ${ROLE_LABEL[role].toLowerCase()}. What they can see and do changes right away.`, label: `Make ${ROLE_LABEL[role].toLowerCase()}` });
+      if (roleId !== user.roleId) {
+        return setRisky({ body, title: `Change ${first} to ${nextRole}?`, message: `${name.trim()} goes from ${user.role} to ${nextRole}. What they can see and do changes right away.`, label: 'Change role' });
       }
       return save.mutate(body);
     }
-    const parsed = createUserInput.safeParse({ name, username, role });
+    const parsed = createUserInput.safeParse({ name, username, roleId: Number(picked || initial) });
     if (!parsed.success) {
       const found: Record<string, string> = {};
       for (const issue of parsed.error.issues) found[String(issue.path[0])] ??= issue.message;
@@ -248,7 +255,7 @@ function UserForm({
       <Field label="Name" error={errors.name}>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} autoComplete="off" />
       </Field>
-      <Field label="Username" hint={user ? undefined : 'Letters, numbers, dots, dashes.'} error={errors.username}>
+      <Field label="Username" hint={user ? undefined : 'Letters, numbers, dots, dashes'} error={errors.username}>
         <input
           className="input"
           value={username}
@@ -260,16 +267,16 @@ function UserForm({
         />
       </Field>
       {!isSelf && (
-        <Choice
+        <Select
           label="Role"
-          value={role}
-          onChange={setRole}
-          options={ROLES.map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
+          value={picked || initial}
+          onChange={setPicked}
+          options={options.map((o) => ({ value: String(o.id), label: o.name }))}
         />
       )}
-      {user && !isSelf && <Check label="Can sign in" hint="Off signs them out." checked={active} onChange={setActive} />}
-      {isSelf && <p className="text-sm text-ink-3">You cannot change your own role or access.</p>}
-      {!user && <p className="text-sm text-ink-3">A one-time password is shown after saving.</p>}
+      {user && !isSelf && <Check label="Can sign in" hint="Off signs them out" checked={active} onChange={setActive} />}
+      {isSelf && <p className="text-sm text-ink-3">You cannot change your own role or access</p>}
+      {!user && <p className="text-sm text-ink-3">A one-time password is shown after saving</p>}
       <FormError message={save.isError ? errorMessage(save.error) : null} />
       <div className="flex gap-3">
         <button type="submit" className="btn btn-primary flex-1" disabled={save.isPending}>
@@ -322,7 +329,11 @@ function Users({ shown: visible }: { shown: boolean }) {
   });
 
   /** The server enforces this too. Here it only hides buttons that would be refused. */
-  const canReset = (u: UserDto) => u.id !== me?.id && (me?.role === 'owner' || (me?.role === 'manager' && u.role === 'cashier'));
+  const { permissions } = useAuth();
+  const roles = useRoles();
+  const permissionsOfRole = (u: UserDto) => roles.data?.find((r) => r.id === u.roleId)?.permissions ?? [];
+  const canLookAfter = (u: UserDto) => u.id !== me?.id && outranks(permissions, permissionsOfRole(u));
+  const canReset = canLookAfter;
   const owner = can('user.manage');
 
   return (
@@ -349,16 +360,16 @@ function Users({ shown: visible }: { shown: boolean }) {
                   <Avatar name={u.name} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className={`truncate font-bold ${u.active ? 'text-ink' : 'text-ink-3'}`}>
+                  <p className={`truncate font-medium ${u.active ? 'text-ink' : 'text-ink-3'}`}>
                     {u.name}
-                    {u.id === me?.id && <span className="ml-2 text-xs font-bold text-ink-3">You</span>}
+                    {u.id === me?.id && <span className="ml-2 text-xs font-medium text-ink-3">You</span>}
                   </p>
                   <p className="text-sm text-ink-3">
                     {u.username} · {u.lastLoginAt ? `Last in ${shortDate(u.lastLoginAt)}` : 'Never signed in'}
                   </p>
                 </div>
               </div>
-              <Pill tone={u.role === 'owner' ? 'blue' : 'grey'}>{ROLE_LABEL[u.role]}</Pill>
+              <Pill tone={u.roleLocked ? 'blue' : 'grey'}>{u.role}</Pill>
               {!u.active ? <Pill tone="grey">Switched off</Pill> : u.mustChangePassword ? <Pill tone="amber">Temporary password</Pill> : <span className="max-lg:hidden"><Pill tone="green">Active</Pill></span>}
               <div className="flex gap-2 max-lg:ml-auto">
                 {canReset(u) && (
@@ -371,7 +382,7 @@ function Users({ shown: visible }: { shown: boolean }) {
                     Reset password
                   </button>
                 )}
-                {owner && (
+                {owner && (u.id === me?.id || canLookAfter(u)) && (
                   <button type="button" className="btn h-11 px-4 max-lg:h-9 max-lg:px-3 max-lg:text-sm" onClick={() => setEditing(u)}>
                     Edit
                   </button>
@@ -415,16 +426,16 @@ export function Staff() {
   return (
     <div className="flex flex-col gap-3 lg:gap-8">
       {both && (
-        <div role="tablist" aria-label="Staff" className="flex lg:hidden">
-          {(['attendants', 'users'] as const).map((t, i) => (
+        <div role="tablist" aria-label="Staff" className="flex gap-0.5 rounded-[10px] bg-line-2 p-0.5 lg:hidden">
+          {(['attendants', 'users'] as const).map((t) => (
             <button
               key={t}
               type="button"
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={`h-10 flex-1 cursor-pointer border-[1.5px] px-3 text-sm font-bold ${i > 0 ? '-ml-[1.5px]' : ''} ${
-                tab === t ? 'z-10 border-blue bg-blue-50 text-blue-d' : 'border-line-strong bg-surface text-ink-2'
+              className={`h-9 flex-1 cursor-pointer rounded-lg px-3 text-sm font-medium transition-colors ${
+                tab === t ? 'bg-surface text-navy shadow-card' : 'text-ink-2'
               }`}
             >
               {t === 'attendants' ? 'Attendants' : 'Users'}

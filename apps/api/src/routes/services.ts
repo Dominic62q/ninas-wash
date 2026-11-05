@@ -42,7 +42,7 @@ export const serviceRoutes: FastifyPluginAsync = async (app) => {
   // Everyone signed in needs the list to build a job. Only the owner sees hidden ones.
   app.get('/', { preHandler: app.requireAuth }, async (req) => {
     const { includeInactive } = list.parse(req.query);
-    const showHidden = includeInactive === '1' && can(req.user!.role, 'service.manage');
+    const showHidden = includeInactive === '1' && can(req.user!.permissions, 'service.manage');
     const rows = await app.db
       .select({ service: services, sold: sold7d })
       .from(services)

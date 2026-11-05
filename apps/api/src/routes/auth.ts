@@ -1,11 +1,11 @@
 import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
-import { changePasswordInput, loginInput, permissionsFor } from '@niinas/shared';
+import { changePasswordInput, loginInput } from '@niinas/shared';
 import { users } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
 import { HttpError, unauthorized } from '../lib/errors.js';
 import { hashPassword, verifyAgainstDummy, verifyPassword } from '../lib/password.js';
-import { SESSION_COOKIE, createSession, deleteSession, deleteUserSessions } from '../lib/session.js';
+import { SESSION_COOKIE, createSession, deleteSession, deleteUserSessions, findSession, publicUser } from '../lib/session.js';
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   const secure = app.config.NODE_ENV === 'production';
@@ -47,14 +47,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         secure,
         expires: expiresAt,
       });
-      const me = {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        role: user.role,
-        mustChangePassword: user.mustChangePassword,
-      };
-      return { user: me, permissions: permissionsFor(user.role) };
+      const me = await findSession(app.db, token, app.config);
+      if (!me) throw unauthorized();
+      return { user: publicUser(me), permissions: me.permissions };
     },
   );
 
@@ -68,7 +63,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/me', async (req) => {
     if (!req.user) throw unauthorized();
-    return { user: req.user, permissions: permissionsFor(req.user.role) };
+    return { user: publicUser(req.user), permissions: req.user.permissions };
   });
 
   // Anyone signed in can change their own password. It is also the only thing a person with a

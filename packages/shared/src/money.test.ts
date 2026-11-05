@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatAmount, formatGHS, parseGHS, percentOf, splitEvenly } from './money.js';
-import { can, permissionsFor } from './roles.js';
+import { DEFAULT_ROLES, PERMISSION_KEYS, can, isWithin, permissionsOf, withNeeded } from './roles.js';
 import { normalizePlate } from './plate.js';
 
 describe('money', () => {
@@ -55,21 +55,35 @@ describe('plates', () => {
 });
 
 describe('roles', () => {
+  const all = permissionsOf({ locked: true, permissions: [] });
+  const manager = [...DEFAULT_ROLES.Manager];
+  const cashier = [...DEFAULT_ROLES.Cashier];
+
   it('lets only managers and the owner void a job', () => {
-    expect(can('cashier', 'job.void')).toBe(false);
-    expect(can('manager', 'job.void')).toBe(true);
-    expect(can('owner', 'job.void')).toBe(true);
+    expect(can(cashier, 'job.void')).toBe(false);
+    expect(can(manager, 'job.void')).toBe(true);
+    expect(can(all, 'job.void')).toBe(true);
   });
 
   it('keeps user management with the owner', () => {
-    expect(can('manager', 'user.manage')).toBe(false);
-    expect(can('owner', 'user.manage')).toBe(true);
+    expect(can(manager, 'user.manage')).toBe(false);
+    expect(can(all, 'user.manage')).toBe(true);
   });
 
-  it('gives the owner at least everything a manager has, and a manager everything a cashier has', () => {
-    const owner = new Set(permissionsFor('owner'));
-    const manager = new Set(permissionsFor('manager'));
-    for (const p of permissionsFor('cashier')) expect(manager.has(p)).toBe(true);
-    for (const p of manager) expect(owner.has(p)).toBe(true);
+  it('gives a locked role everything, and a manager everything a cashier has', () => {
+    expect(isWithin(manager, all)).toBe(true);
+    expect(isWithin(cashier, manager)).toBe(true);
+    expect(isWithin(manager, cashier)).toBe(false);
+  });
+
+  it('adds what a ticked permission needs, and drops anything unknown', () => {
+    expect(withNeeded(['payment.void'])).toEqual(['job.create', 'payment.record', 'payment.void']);
+    expect(withNeeded(['role.manage', 'made.up'])).toEqual(['user.manage', 'user.reset_password', 'role.manage']);
+    expect(withNeeded([])).toEqual([]);
+  });
+
+  it('applies the owner rule only to a locked role', () => {
+    expect(permissionsOf({ locked: false, permissions: ['report.view'] })).toEqual(['report.view']);
+    expect(permissionsOf({ locked: true, permissions: [] })).toHaveLength(PERMISSION_KEYS.length);
   });
 });

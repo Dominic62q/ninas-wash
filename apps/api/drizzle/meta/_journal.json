@@ -50,6 +50,13 @@
       "when": 1793700670426,
       "tag": "0006_phase8_sms",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793867780922,
+      "tag": "0007_roles",
+      "breakpoints": true
     }
   ]
 }

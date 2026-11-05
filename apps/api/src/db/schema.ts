@@ -23,7 +23,6 @@ import {
 
 // ---- enums ---------------------------------------------------------------
 
-export const roleEnum = pgEnum('role', ['cashier', 'manager', 'owner']);
 export const carTypeEnum = pgEnum('car_type', ['saloon', 'suv', 'pickup', 'van', 'other']);
 export const jobStatusEnum = pgEnum('job_status', ['pending', 'in_progress', 'completed', 'dispatched']);
 export const payMethodEnum = pgEnum('pay_method', ['cash', 'momo']);
@@ -44,6 +43,23 @@ const createdAt = () => stamp('created_at').notNull().defaultNow();
 
 // ---- people --------------------------------------------------------------
 
+/**
+ * A named set of permissions. The owner role is `locked`: it can do everything, and cannot be changed or removed,
+ * so there is always someone who can fix a mistake in the others. Permissions are keys from the shared catalog.
+ */
+export const roles = pgTable(
+  'roles',
+  {
+    id: id(),
+    name: text('name').notNull().unique(),
+    locked: boolean('locked').notNull().default(false),
+    permissions: text('permissions').array().notNull().default(sql`'{}'::text[]`),
+    createdAt: createdAt(),
+    updatedAt: stamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [check('roles_name_not_blank', sql`length(btrim(${t.name})) > 0`)],
+);
+
 /** Someone who signs in. Never deleted; set inactive instead. */
 export const users = pgTable(
   'users',
@@ -51,7 +67,7 @@ export const users = pgTable(
     id: id(),
     name: text('name').notNull(),
     username: text('username').notNull().unique(),
-    role: roleEnum('role').notNull(),
+    roleId: ref('role_id').notNull().references(() => roles.id),
     passwordHash: text('password_hash').notNull(),
     /** Set when an admin created or reset the password, so the person must choose their own next. */
     mustChangePassword: boolean('must_change_password').notNull().default(false),
@@ -59,7 +75,7 @@ export const users = pgTable(
     createdAt: createdAt(),
     lastLoginAt: stamp('last_login_at'),
   },
-  (t) => [check('users_username_lowercase', sql`${t.username} = lower(${t.username})`)],
+  (t) => [index('users_role_idx').on(t.roleId), check('users_username_lowercase', sql`${t.username} = lower(${t.username})`)],
 );
 
 /** Server-side sign-in sessions. `id` is the SHA-256 of the cookie token, never the token itself. */
