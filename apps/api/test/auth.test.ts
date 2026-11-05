@@ -169,6 +169,24 @@ describe('roles', () => {
     }
   });
 
+  it('filters the audit log by person and area, and pages with a next marker', async () => {
+    const owner = cookieOf(await login('t.owner'));
+    const all = (await app.inject({ method: 'GET', url: '/api/audit?limit=2', headers: { cookie: owner } })).json();
+    expect(all.entries).toHaveLength(2);
+    expect(all.next).toBe(all.entries[1].id);
+    expect(all.people.length).toBeGreaterThan(0);
+
+    const older = (await app.inject({ method: 'GET', url: `/api/audit?limit=2&before=${all.next}`, headers: { cookie: owner } })).json();
+    expect(older.entries.every((e: { id: number }) => e.id < all.next)).toBe(true);
+
+    const people = (await app.inject({ method: 'GET', url: '/api/audit?area=people&limit=50', headers: { cookie: owner } })).json();
+    expect(people.entries.length).toBeGreaterThan(0);
+    expect(people.entries.every((e: { action: string }) => /^(user|role|attendant|auth|customer)\./.test(e.action))).toBe(true);
+
+    const nobody = (await app.inject({ method: 'GET', url: '/api/audit?userId=999999', headers: { cookie: owner } })).json();
+    expect(nobody.entries).toEqual([]);
+  });
+
   it('asks signed-out visitors to sign in before telling them anything about permissions', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/audit' });
     expect(res.statusCode).toBe(401);

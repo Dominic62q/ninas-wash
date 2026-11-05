@@ -11,7 +11,7 @@ export interface NavItem {
   group: 'Daily' | 'Money' | 'Setup';
 }
 
-export type IconName = 'home' | 'jobs' | 'users' | 'receipt' | 'coin' | 'lock' | 'chart' | 'tag' | 'staff' | 'chat' | 'more';
+export type IconName = 'home' | 'jobs' | 'users' | 'receipt' | 'coin' | 'lock' | 'chart' | 'tag' | 'staff' | 'chat' | 'more' | 'history';
 
 /** The last build phase whose screens are finished. */
 export const BUILT_PHASE = 8;
@@ -28,6 +28,7 @@ export const NAV: NavItem[] = [
   { path: '/sms', label: 'Texts', icon: 'chat', needs: 'sms.view', phase: 8, group: 'Setup' },
   { path: '/services', label: 'Services', icon: 'tag', needs: 'service.manage', phase: 1, group: 'Setup' },
   { path: '/staff', label: 'Staff and users', icon: 'staff', needs: 'user.reset_password', phase: 1, group: 'Setup' },
+  { path: '/activity', label: 'Activity log', icon: 'history', needs: 'audit.read', phase: 8, group: 'Setup' },
 ];
 
 /** What the phone's Money tab lists: every finished money screen this person may open. */

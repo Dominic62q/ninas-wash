@@ -8,6 +8,7 @@ import { NAV } from './lib/nav';
 import { useThemeSync } from './lib/theme';
 import { ComingSoon } from './pages/ComingSoon';
 import { ChangePassword } from './pages/ChangePassword';
+import { ActivityLog } from './pages/ActivityLog';
 import { Commissions } from './pages/Commissions';
 import { Customers } from './pages/Customers';
 import { DailyClose } from './pages/DailyClose';
@@ -48,6 +49,7 @@ const SCREENS: Record<string, ReactNode> = {
   '/daily-close': <DailyClose />,
   '/reports': <Reports />,
   '/sms': <Texts />,
+  '/activity': <ActivityLog />,
 };
 
 /** A page that needs a permission. Without it, the person lands on the dashboard instead. */
