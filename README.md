@@ -31,7 +31,7 @@ To use another database, set `DATABASE_URL` in `apps/api/.env`.
 
 ## Going live
 
-See [DEPLOY.md](DEPLOY.md): a plain VPS with PostgreSQL, nginx and HTTPS, nightly backups, and how updates reach people (a "new version is ready" prompt, never a surprise reload).
+See [DEPLOY.md](DEPLOY.md): the web app on Vercel and the API on a VPS in Docker (Caddy for HTTPS, PostgreSQL), nightly backups, and how updates reach people (a "new version is ready" prompt, never a surprise reload).
 
 ## Everyday commands
 

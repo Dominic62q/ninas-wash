@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/dist
+**/.vite
+.env
+.dev-credentials.txt
+.pgdata
+apps/web/*
+!apps/web/package.json
+apps/api/test

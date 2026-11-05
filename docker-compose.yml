@@ -1,0 +1,55 @@
+# The server side of Niinas Wash: Caddy (HTTPS), the API, and Postgres. Nothing is published except 80 and 443.
+# Settings come from a .env file next to this one (copy deploy/.env.example and fill it in).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: niinas
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: niinas
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U niinas -d niinas']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://niinas:${POSTGRES_PASSWORD}@db:5432/niinas
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN in .env (the Vercel address)}
+      SMS_API_URL: ${SMS_API_URL:-}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      SMS_SENDER_ID: ${SMS_SENDER_ID:-NiinasWash}
+    expose:
+      - '3001'
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN in .env (the API hostname)}
+      ORIGIN_SECRET: ${ORIGIN_SECRET:?Set ORIGIN_SECRET in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
