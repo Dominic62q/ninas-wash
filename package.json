@@ -8,7 +8,7 @@
     "apps/*"
   ],
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "concurrently -n db,api,web -c blue,red,green \"npm:dev:db\" \"npm:dev:api\" \"npm:dev:web\"",
