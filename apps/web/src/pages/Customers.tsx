@@ -127,7 +127,7 @@ function CustomerForm({ customer, onDone }: { customer: CustomerRow | null; onDo
       </Field>
       <Check
         label="OK to text them"
-        hint="Only if they agreed."
+        hint="Only if they agreed"
         checked={okToText}
         onChange={setOkToText}
       />
@@ -238,7 +238,7 @@ function CustomerPanel({ id }: { id: number }) {
           </section>
 
           {data.owes > 0 && (
-            <p className="border-l-4 border-red bg-red-50 px-3 py-2.5 text-sm font-bold text-red-d">Owes {formatGHS(data.owes)}</p>
+            <p className="border-l-4 border-red bg-red-50 px-3 py-2.5 text-sm font-medium text-red-d">Owes {formatGHS(data.owes)}</p>
           )}
 
           <dl className="grid grid-cols-3 border border-line">
@@ -248,20 +248,20 @@ function CustomerPanel({ id }: { id: number }) {
               ['Spent', formatGHS(data.customer.spent)],
             ].map(([label, value], i) => (
               <div key={label} className={`px-3 py-3 ${i > 0 ? 'border-l border-line' : ''}`}>
-                <dt className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink-3">{label}</dt>
-                <dd className="num mt-0.5 font-bold text-navy">{value}</dd>
+                <dt className="text-xs font-medium text-ink-3">{label}</dt>
+                <dd className="num mt-0.5 font-semibold text-navy">{value}</dd>
               </div>
             ))}
           </dl>
 
           <section aria-label="Cars">
             <div className="flex items-center gap-3">
-              <h3 className="flex-1 text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Cars</h3>
+              <h3 className="flex-1 text-sm font-medium text-ink-2">Cars</h3>
               <button type="button" className="tap text-sm text-blue-d" onClick={() => setEdit({ car: null })}>
                 Add a car
               </button>
             </div>
-            {data.customer.vehicles.length === 0 && <p className="mt-2 text-ink-3">No cars.</p>}
+            {data.customer.vehicles.length === 0 && <p className="mt-2 text-ink-3">No cars</p>}
             <ul className="mt-2 divide-y divide-line-2 border-y border-line-2">
               {data.customer.vehicles.map((v) => (
                 <li key={v.id} className="flex items-center gap-3 py-2.5">
@@ -276,14 +276,14 @@ function CustomerPanel({ id }: { id: number }) {
           </section>
 
           <section aria-label="Recent visits">
-            <h3 className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Recent visits</h3>
-            {data.recentVisits.length === 0 && <p className="mt-2 text-ink-3">No visits.</p>}
+            <h3 className="text-sm font-medium text-ink-2">Recent visits</h3>
+            {data.recentVisits.length === 0 && <p className="mt-2 text-ink-3">No visits</p>}
             <ul className="mt-2 divide-y divide-line-2 border-y border-line-2">
               {data.recentVisits.map((v) => (
                 <li key={v.jobId} className="flex items-center gap-3 py-2.5">
                   <span className="w-16 flex-none text-sm text-ink-3">{shortDate(v.at)}</span>
                   <span className={`min-w-0 flex-1 truncate text-sm ${v.voided ? 'text-ink-3 line-through' : 'text-ink'}`}>{v.services.join(', ') || 'No services'}</span>
-                  {v.voided ? <Pill tone="grey">Voided</Pill> : <span className="num text-sm font-bold text-ink">{formatGHS(v.total)}</span>}
+                  {v.voided ? <Pill tone="grey">Voided</Pill> : <span className="num text-sm font-semibold text-ink">{formatGHS(v.total)}</span>}
                 </li>
               ))}
             </ul>
@@ -356,7 +356,7 @@ export function Customers() {
       </div>
 
       <section aria-label="Customers" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
-        <div className="hidden grid-cols-[1.4fr_1.2fr_70px_110px_120px] gap-4 border-b border-line bg-band px-4 py-2.5 text-xs font-bold uppercase tracking-[0.06em] text-ink-3 lg:grid">
+        <div className="hidden grid-cols-[1.4fr_1.2fr_70px_110px_120px] gap-4 border-b border-line bg-band px-4 py-2.5 text-xs font-medium text-ink-3 lg:grid">
           <span>Customer</span>
           <span>Cars</span>
           <span className="text-right">Visits</span>
@@ -365,7 +365,7 @@ export function Customers() {
         </div>
         {list.isPending && <SkeletonRows />}
         {list.isError && <EmptyRow>{errorMessage(list.error)}</EmptyRow>}
-        {list.isSuccess && rows.length === 0 && <EmptyRow>{search ? 'No one matches that.' : 'No customers yet. Add the first one.'}</EmptyRow>}
+        {list.isSuccess && rows.length === 0 && <EmptyRow>{search ? 'No one matches that' : 'No customers yet. Add the first one.'}</EmptyRow>}
         <ul>
           {rows.map((c) => (
             <li key={c.id} className="border-b border-line-2 last:border-b-0">
@@ -373,12 +373,12 @@ export function Customers() {
                 {/* Phone: two short lines. Name and phone on the left, plate and visits on the right. */}
                 <span className="flex items-center gap-3 lg:hidden">
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-bold text-ink">{c.name}</span>
+                    <span className="block truncate font-medium text-ink">{c.name}</span>
                     <span className="block truncate text-sm text-ink-3">{c.phone ? formatPhone(c.phone) : 'No phone'}</span>
                   </span>
                   <span className="flex flex-none flex-col items-end gap-1">
                     <span className="flex items-center gap-1.5">
-                      {c.vehicles.length > 1 && <span className="text-xs font-bold text-ink-3">+{c.vehicles.length - 1}</span>}
+                      {c.vehicles.length > 1 && <span className="text-xs font-medium text-ink-3">+{c.vehicles.length - 1}</span>}
                       {c.vehicles[0] ? <Plate plate={c.vehicles[0].plate} size="sm" /> : <span className="text-sm text-ink-3">No car</span>}
                     </span>
                     <span className="text-xs text-ink-3">
@@ -390,7 +390,7 @@ export function Customers() {
                 {/* Computer: the table row. */}
                 <span className="hidden grid-cols-[1.4fr_1.2fr_70px_110px_120px] items-center gap-4 lg:grid">
                   <span className="min-w-0">
-                    <span className="block truncate font-bold text-ink">{c.name}</span>
+                    <span className="block truncate font-medium text-ink">{c.name}</span>
                     <span className="block text-sm text-ink-3">{c.phone ? formatPhone(c.phone) : 'No phone'}</span>
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5 text-sm text-ink-3">
@@ -398,7 +398,7 @@ export function Customers() {
                   </span>
                   <span className="num text-right">{c.visits}</span>
                   <span className="text-sm text-ink-3">{c.lastVisit ? shortDate(c.lastVisit) : 'Never'}</span>
-                  <span className="num text-right font-bold">{(c.spent / 100).toFixed(2)}</span>
+                  <span className="num text-right font-semibold">{(c.spent / 100).toFixed(2)}</span>
                 </span>
               </button>
             </li>
@@ -406,7 +406,7 @@ export function Customers() {
         </ul>
         {total > rows.length && (
           <div className="border-t border-line-2 px-4 py-3 text-center">
-            <button type="button" className="font-bold text-blue-d" onClick={() => setLimit((n) => n + PAGE)}>
+            <button type="button" className="font-medium text-blue-d" onClick={() => setLimit((n) => n + PAGE)}>
               Show more ({rows.length} of {total})
             </button>
           </div>

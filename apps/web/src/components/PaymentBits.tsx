@@ -74,14 +74,14 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
           {amount !== null && amount > 0 && (
             <div className="flex flex-wrap gap-2 lg:hidden">
               {[amount, ...[20, 50, 100, 200].map((n) => n * 100).filter((n) => n > amount)].slice(0, 4).map((n, i) => (
-                <button key={n} type="button" onClick={() => setReceived(plain(n))} className="num h-9 cursor-pointer rounded-lg bg-band px-3 text-sm font-bold text-navy active:scale-95">
+                <button key={n} type="button" onClick={() => setReceived(plain(n))} className="num h-9 cursor-pointer rounded-lg bg-band px-3 text-sm font-semibold text-navy active:scale-95">
                   {i === 0 ? 'Exact' : formatAmount(n).replace(/\.00$/, '')}
                 </button>
               ))}
             </div>
           )}
           {change !== null && (
-            <span className="num text-sm font-bold text-green" aria-live="polite">
+            <span className="num text-sm font-semibold text-green" aria-live="polite">
               Give back {formatGHS(change)}
             </span>
           )}

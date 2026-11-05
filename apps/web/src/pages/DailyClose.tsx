@@ -19,7 +19,7 @@ function Difference({ amount }: { amount: number }) {
 
 function Line({ label, amount, sign, strong }: { label: string; amount: number; sign?: '+' | '−'; strong?: boolean }) {
   return (
-    <div className={`flex items-baseline justify-between gap-3 px-4 py-1.5 text-sm ${strong ? 'border-t border-line bg-band font-bold text-ink' : 'text-ink-2'}`}>
+    <div className={`flex items-baseline justify-between gap-3 px-4 py-1.5 text-sm ${strong ? 'border-t border-line bg-band font-medium text-ink' : 'text-ink-2'}`}>
       <span>
         {sign && <span className="mr-1.5 inline-block w-3 text-center text-ink-3">{sign}</span>}
         {label}
@@ -56,7 +56,7 @@ function Breakdown({ cash }: { cash: Cash }) {
               <span className="num">{formatGHS(n)}</span>
             </p>
           ))}
-          {out === 0 && <p className="px-4 py-0.5">Nothing paid out.</p>}
+          {out === 0 && <p className="px-4 py-0.5">Nothing paid out</p>}
         </div>
       </details>
     </div>
@@ -122,7 +122,7 @@ function NoteCounter({ onTotal }: { onTotal: (cedis: number) => void }) {
 
   return (
     <details className="rounded-[10px] bg-band lg:hidden">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-bold text-navy [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-medium text-navy [&::-webkit-details-marker]:hidden">
         Count the notes
         <span className="num font-semibold text-ink-2">{total > 0 ? formatGHS(total * 100) : ''}</span>
       </summary>
@@ -131,13 +131,13 @@ function NoteCounter({ onTotal }: { onTotal: (cedis: number) => void }) {
           <li key={n} className="flex items-center justify-between py-1">
             <span className="num text-sm font-semibold text-ink">GH₵ {n}</span>
             <span className="flex items-center gap-1">
-              <button type="button" aria-label={`One less ${n} cedi note`} onClick={() => change(n, -1)} className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg bg-surface text-lg font-bold text-navy active:scale-95">
+              <button type="button" aria-label={`One less ${n} cedi note`} onClick={() => change(n, -1)} className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg bg-surface text-lg font-medium text-navy active:scale-95">
                 −
               </button>
-              <span className="num w-9 text-center text-sm font-bold" aria-live="polite">
+              <span className="num w-9 text-center text-sm font-semibold" aria-live="polite">
                 {counts[n] ?? 0}
               </span>
-              <button type="button" aria-label={`One more ${n} cedi note`} onClick={() => change(n, 1)} className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg bg-surface text-lg font-bold text-navy active:scale-95">
+              <button type="button" aria-label={`One more ${n} cedi note`} onClick={() => change(n, 1)} className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg bg-surface text-lg font-medium text-navy active:scale-95">
                 +
               </button>
             </span>
@@ -213,20 +213,20 @@ function CloseForm({ summary }: { summary: DaySummary }) {
 
   return (
     <section aria-label="Close the day" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
-      <h3 className="border-b border-line px-4 py-2.5 text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">The drawer</h3>
+      <h3 className="border-b border-line px-4 py-2.5 text-sm font-medium text-ink-2">The drawer</h3>
       {summary.cash && <Breakdown cash={summary.cash} />}
       <div className="flex flex-col gap-3 border-t border-line p-4 first:border-t-0">
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <div className="flex h-5 items-center justify-between gap-1">
-              <label htmlFor="float-start" className="text-[13px] font-bold text-ink-2">Cash at start (GH₵)</label>
+              <label htmlFor="float-start" className="text-sm font-medium text-ink-2">Cash at start (GH₵)</label>
               <InfoButton label="What is cash at start?" open={tip === 'start'} onToggle={() => toggleTip('start')} />
             </div>
             <input id="float-start" className="input" inputMode="decimal" value={floatText} onChange={(e) => { setFloatText(e.target.value); setError(null); }} autoComplete="off" placeholder="0.00" />
           </div>
           <div className="flex flex-col gap-1.5">
             <div className="flex h-5 items-center justify-between gap-1">
-              <label htmlFor="float-count" className="text-[13px] font-bold text-ink-2">Cash counted (GH₵)</label>
+              <label htmlFor="float-count" className="text-sm font-medium text-ink-2">Cash counted (GH₵)</label>
               <InfoButton label="What is cash counted?" open={tip === 'count'} onToggle={() => toggleTip('count')} />
             </div>
             <input id="float-count" className="input" inputMode="decimal" value={countText} onChange={(e) => { setCountText(e.target.value); setError(null); }} autoComplete="off" placeholder="0.00" />
@@ -280,7 +280,7 @@ function ClosedResult({ close, summary }: { close: DailyCloseRow; summary: DaySu
   return (
     <section aria-label="Result" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
       <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
-        <h3 className="flex-1 text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Closed</h3>
+        <h3 className="flex-1 text-sm font-medium text-ink-2">Closed</h3>
         <Difference amount={close.difference} />
       </div>
       <div className="py-1">
@@ -373,7 +373,7 @@ export function DailyClose() {
 
       {can('dailyclose.see_expected') && (
         <section aria-label="Past days" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
-          <h3 className="border-b border-line px-4 py-2.5 text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Past closes</h3>
+          <h3 className="border-b border-line px-4 py-2.5 text-sm font-medium text-ink-2">Past closes</h3>
           {history.isPending ? (
             <SkeletonRows count={3} />
           ) : history.data && history.data.closes.length > 0 ? (
@@ -382,7 +382,7 @@ export function DailyClose() {
                 <li key={c.day}>
                   <button type="button" onClick={() => setParams(c.day === today ? {} : { day: c.day }, { replace: true })} className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-band">
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold text-ink">{dayName(c.day)}</p>
+                      <p className="font-medium text-ink">{dayName(c.day)}</p>
                       <p className="num truncate text-xs text-ink-3">{c.status === 'reopened' ? 'Reopened, not yet closed' : `Counted ${formatGHS(c.countedCash)} · ${c.closedBy}`}</p>
                     </div>
                     {c.status === 'reopened' ? <Pill tone="amber">Reopened</Pill> : <Difference amount={c.difference} />}
@@ -391,7 +391,7 @@ export function DailyClose() {
               ))}
             </ul>
           ) : (
-            <EmptyRow>No days have been closed yet.</EmptyRow>
+            <EmptyRow>No days have been closed yet</EmptyRow>
           )}
         </section>
       )}

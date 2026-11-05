@@ -107,7 +107,7 @@ export function Tips() {
 
       <section aria-label="Held tips" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
         <div className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-2.5">
-          <h3 className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Held at the till</h3>
+          <h3 className="text-sm font-medium text-ink-2">Held at the till</h3>
           <p className="display num text-[21px] leading-none text-navy lg:text-[24px]">{formatGHS(data?.totalHeld ?? 0)}</p>
         </div>
         {tips.isPending ? (
@@ -117,10 +117,10 @@ export function Tips() {
             {data.held.map((h) => (
               <li key={h.attendantId} className="flex items-center gap-3 px-4 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold text-ink">{h.name}</p>
+                  <p className="truncate font-medium text-ink">{h.name}</p>
                   <p className="text-xs text-ink-3">{plural(h.count, 'tip')}</p>
                 </div>
-                <p className="num font-bold text-ink">{formatGHS(h.amount)}</p>
+                <p className="num font-semibold text-ink">{formatGHS(h.amount)}</p>
                 {can('tip.handout') && (
                   <button type="button" className="btn h-9 px-3 text-sm" onClick={() => setHanding({ attendantId: h.attendantId, name: h.name, amount: h.amount })}>
                     Hand over
@@ -130,12 +130,12 @@ export function Tips() {
             ))}
           </ul>
         ) : (
-          <EmptyRow>No tips are being held.</EmptyRow>
+          <EmptyRow>No tips are being held</EmptyRow>
         )}
       </section>
 
       <section aria-label="Recent tips" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
-        <h3 className="border-b border-line px-4 py-2.5 text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Last 7 days</h3>
+        <h3 className="border-b border-line px-4 py-2.5 text-sm font-medium text-ink-2">Last 7 days</h3>
         {tips.isPending ? (
           <SkeletonRows count={3} />
         ) : data && data.tips.length > 0 ? (
@@ -145,11 +145,11 @@ export function Tips() {
               const first = i === 0 || data.tips[i - 1]!.at.slice(0, 10) !== day;
               return (
                 <Fragment key={t.id}>
-                  {first && <li className="border-b border-line bg-band px-4 py-1.5 text-xs font-bold uppercase tracking-[0.06em] text-ink-2 [&:not(:first-child)]:border-t">{dayName(day)}</li>}
+                  {first && <li className="border-b border-line bg-band px-4 py-1.5 text-xs font-medium text-ink-2 [&:not(:first-child)]:border-t">{dayName(day)}</li>}
                   <li className="flex items-start gap-3 border-b border-line-2 px-4 py-2.5 last:border-b-0">
                     <div className={`min-w-0 flex-1 ${t.voided ? 'text-ink-3' : ''}`}>
                       <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className={`font-bold ${t.voided ? 'line-through' : 'text-ink'}`}>{t.attendant}</span>
+                        <span className={`font-medium ${t.voided ? 'line-through' : 'text-ink'}`}>{t.attendant}</span>
                         <TipStatus tip={t} />
                       </p>
                       <p className="truncate text-xs text-ink-3">
@@ -164,15 +164,15 @@ export function Tips() {
                         {t.by}, {clock(t.at)}
                       </p>
                       {t.voided && (
-                        <p className="text-xs font-semibold text-red-d">
+                        <p className="text-xs font-medium text-red-d">
                           Voided by {t.voided.by}: {t.voided.reason}
                         </p>
                       )}
                     </div>
                     <div className="flex flex-col items-end">
-                      <p className={`num font-bold ${t.voided ? 'text-ink-3 line-through' : 'text-ink'}`}>{formatGHS(t.amount)}</p>
+                      <p className={`num font-semibold ${t.voided ? 'text-ink-3 line-through' : 'text-ink'}`}>{formatGHS(t.amount)}</p>
                       {can('tip.void') && !t.voided && !t.handedOut && (
-                        <button type="button" className="mt-0.5 cursor-pointer text-xs font-semibold text-red-d" onClick={() => setVoiding(t)}>
+                        <button type="button" className="mt-0.5 cursor-pointer text-xs font-medium text-red-d" onClick={() => setVoiding(t)}>
                           Void
                         </button>
                       )}
@@ -183,7 +183,7 @@ export function Tips() {
             })}
           </ul>
         ) : (
-          <EmptyRow>No tips in the last 7 days.</EmptyRow>
+          <EmptyRow>No tips in the last 7 days</EmptyRow>
         )}
         {data && data.total > data.tips.length && <p className="border-t border-line px-4 py-2.5 text-xs text-ink-3">Showing the latest {data.tips.length} of {data.total}.</p>}
       </section>

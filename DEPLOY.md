@@ -33,6 +33,16 @@ HOST=127.0.0.1
 
 In production the API refuses to start if `DATABASE_URL` is missing or still the development one, or if `WEB_ORIGIN` is not an `https://` address. The message says which.
 
+**Customer texts (optional).** Add these three lines from the Nalo account when you want texts to really go out:
+
+```
+SMS_API_URL=<the full send address from Nalo>
+SMS_API_KEY=<the Nalo key>
+SMS_SENDER_ID=NiinasWash
+```
+
+Without the first two, nothing breaks: every text is recorded as "not sent" and no credits are spent. The sender id (11 characters at most) must be approved by Nalo before it works. Restart the API after changing them.
+
 **Tables, then the first owner**
 
 ```bash

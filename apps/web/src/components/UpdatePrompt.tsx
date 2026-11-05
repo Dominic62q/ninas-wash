@@ -43,7 +43,7 @@ export function UpdatePrompt() {
       className="toast fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] border border-line border-l-[5px] border-l-blue bg-surface p-3.5 shadow-[0_8px_28px_rgba(11,42,91,0.28)] lg:inset-x-auto lg:right-6 lg:top-5 lg:w-[400px]"
     >
       <p className="display text-lg leading-tight text-navy">A new version is ready</p>
-      <p className="mt-0.5 text-sm text-ink-2">Finish what you are doing, then refresh to get the latest changes.</p>
+      <p className="mt-0.5 text-sm text-ink-2">Finish what you are doing, then refresh to get the latest changes</p>
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         <button type="button" className="btn h-10" onClick={() => setDismissed(true)} disabled={busy}>
           Later

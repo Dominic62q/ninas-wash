@@ -71,7 +71,7 @@ function ReportTable<T>({ label, cols, rows, rowKey, foot }: Spec<T>) {
         <thead>
           <tr className="bg-band">
             {cols.map((c) => (
-              <th key={c.head} scope="col" className={`whitespace-nowrap px-2.5 first:pl-4 last:pr-4 lg:px-4 py-2 text-xs font-bold uppercase tracking-[0.06em] text-ink-3 ${align(c.num)}`}>
+              <th key={c.head} scope="col" className={`whitespace-nowrap px-2.5 first:pl-4 last:pr-4 lg:px-4 py-2 text-xs font-medium text-ink-3 ${align(c.num)}`}>
                 {c.head}
               </th>
             ))}
@@ -83,7 +83,7 @@ function ReportTable<T>({ label, cols, rows, rowKey, foot }: Spec<T>) {
               {cols.map((c, i) => {
                 const cell = c.show ? c.show(row) : text(c, c.value(row), bare);
                 return i === 0 ? (
-                  <th key={c.head} scope="row" className="px-2.5 first:pl-4 last:pr-4 lg:px-4 py-2.5 text-left font-semibold text-ink">
+                  <th key={c.head} scope="row" className="px-2.5 first:pl-4 last:pr-4 lg:px-4 py-2.5 text-left font-medium text-ink">
                     {cell}
                   </th>
                 ) : (
@@ -97,7 +97,7 @@ function ReportTable<T>({ label, cols, rows, rowKey, foot }: Spec<T>) {
         </tbody>
         {foot && (
           <tfoot>
-            <tr className="border-t-2 border-line bg-band font-bold text-ink">
+            <tr className="border-t-2 border-line bg-band font-medium text-ink">
               {cols.map((c, i) =>
                 i === 0 ? (
                   <th key={c.head} scope="row" className="px-2.5 first:pl-4 last:pr-4 lg:px-4 py-2.5 text-left">
@@ -206,7 +206,7 @@ function sections(r: ReportDto): Section[] {
         }),
         part({
           label: 'By service',
-          empty: 'No cars in this period.',
+          empty: 'No cars in this period',
           rowKey: (s) => s.name,
           cols: [
             { head: 'Service', value: (s) => s.name },
@@ -224,7 +224,7 @@ function sections(r: ReportDto): Section[] {
       parts: [
         part({
           label: 'Who earned',
-          empty: 'No commission earned in this period.',
+          empty: 'No commission earned in this period',
           rowKey: (x) => x.name,
           cols: [
             { head: 'Attendant', value: (x) => x.name },
@@ -242,7 +242,7 @@ function sections(r: ReportDto): Section[] {
       parts: [
         part({
           label: 'Spending',
-          empty: 'Nothing was spent in this period.',
+          empty: 'Nothing was spent in this period',
           rowKey: (c) => c.category,
           cols: [
             { head: 'Category', value: (c) => c.category },
@@ -273,7 +273,7 @@ function sections(r: ReportDto): Section[] {
         }),
         part({
           label: 'Days to look at',
-          empty: 'Every closed day balanced and no day was missed.',
+          empty: 'Every closed day balanced and no day was missed',
           rowKey: (x) => x.key,
           cols: [
             {
@@ -323,7 +323,7 @@ export function Reports() {
   const to = range === 'custom' ? pickTo : ymd(b);
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to);
   const days = valid ? Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1 : 0;
-  const rangeError = !valid ? 'Pick both dates.' : days < 1 ? 'The end date is before the start date.' : days > REPORT_MAX_DAYS ? `Pick at most ${REPORT_MAX_DAYS} days.` : null;
+  const rangeError = !valid ? 'Pick both dates' : days < 1 ? 'The end date is before the start date' : days > REPORT_MAX_DAYS ? `Pick at most ${REPORT_MAX_DAYS} days` : null;
 
   const query = useQuery({
     queryKey: ['report', from, to],
@@ -361,7 +361,7 @@ export function Reports() {
       }
     }
     downloadCsv(`niinas-report-${r.from}-to-${r.to}.csv`, rows);
-    toast.success('Report saved as CSV.');
+    toast.success('Report saved as CSV');
   };
 
   return (
@@ -433,7 +433,7 @@ export function Reports() {
                     setTab(next.title);
                     document.getElementById(`tab-${slug(next.title)}`)?.focus();
                   }}
-                  className={`-mb-px flex-1 shrink-0 cursor-pointer whitespace-nowrap border-b-[3px] px-0.5 py-2.5 text-[13px] font-bold lg:px-3.5 lg:text-sm ${on ? 'border-blue text-blue-d' : 'border-transparent text-ink-3 hover:text-ink'}`}
+                  className={`-mb-px flex-1 shrink-0 cursor-pointer whitespace-nowrap border-b-[3px] px-0.5 py-2.5 text-[13px] font-medium lg:px-3.5 lg:text-sm ${on ? 'border-blue text-blue-d' : 'border-transparent text-ink-3 hover:text-ink'}`}
                 >
                   {TAB[s.title] ?? s.title}
                 </button>
@@ -450,7 +450,7 @@ export function Reports() {
               className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card"
             >
               <div className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-2.5">
-                <h3 className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">{current.title}</h3>
+                <h3 className="text-sm font-medium text-ink-2">{current.title}</h3>
                 <div className="flex items-baseline gap-3">
                   {current.aside && <p className="text-sm text-ink-2">{current.aside}</p>}
                   <button type="button" onClick={() => exportOne(current)} aria-label={`Export ${current.title} as CSV`} className="tap -my-2.5 -mr-3 text-sm text-blue-d">
@@ -460,7 +460,7 @@ export function Reports() {
               </div>
               {current.parts.map((p, i) => (
                 <div key={p.label} className={i > 0 ? 'border-t-2 border-line' : ''}>
-                  {i > 0 && <h4 className="bg-surface px-4 pb-1 pt-3 text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">{p.label}</h4>}
+                  {i > 0 && <h4 className="bg-surface px-4 pb-1 pt-3 text-sm font-medium text-ink-2">{p.label}</h4>}
                   {p.node}
                 </div>
               ))}

@@ -107,7 +107,7 @@ export function SignIn() {
         <div className="relative flex h-full flex-col justify-end px-6 pb-12 text-white">
           <Mark size={60} />
           <span className="brand mt-4 text-[34px] leading-none">NIINAS WASH</span>
-          <span className="mt-2 text-sm font-semibold">Every cedi. Every wash.</span>
+          <span className="mt-2 text-sm font-medium">Every cedi. Every wash.</span>
         </div>
       </div>
 
@@ -139,7 +139,7 @@ export function SignIn() {
                 {...register('username')}
               />
               {errors.username && (
-                <p id="username-error" className="text-sm font-semibold text-red-d">
+                <p id="username-error" className="text-sm font-medium text-red-d">
                   {errors.username.message}
                 </p>
               )}
@@ -169,14 +169,14 @@ export function SignIn() {
                 {...register('password')}
               />
               {errors.password && (
-                <p id="password-error" className="text-sm font-semibold text-red-d">
+                <p id="password-error" className="text-sm font-medium text-red-d">
                   {errors.password.message}
                 </p>
               )}
             </div>
 
             {message && (
-              <p role="alert" className="rounded-md border border-red/30 bg-red-50 px-3.5 py-2.5 text-sm font-semibold text-red-d">
+              <p role="alert" className="rounded-md border border-red/30 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-d">
                 {message}
               </p>
             )}
@@ -187,7 +187,7 @@ export function SignIn() {
             </button>
           </form>
 
-          <p className="text-[13px] text-ink-3">Forgot your password? Ask a manager.</p>
+          <p className="text-[13px] text-ink-3">Forgot your password? Ask a manager</p>
         </div>
       </div>
 

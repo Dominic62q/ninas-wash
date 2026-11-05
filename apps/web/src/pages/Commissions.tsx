@@ -113,7 +113,7 @@ function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid: (p: Payout) 
       <li className="flex items-start gap-3 px-4 py-2.5">
         <div className={`min-w-0 flex-1 ${entry.reversed ? 'text-ink-3' : ''}`}>
           <p className="truncate">
-            <Link to={`/jobs/${entry.jobId}`} className="font-bold text-blue-d">
+            <Link to={`/jobs/${entry.jobId}`} className="font-medium text-blue-d">
               {entry.plate.toUpperCase()}
             </Link>{' '}
             <span className={entry.reversed ? 'line-through' : 'text-ink-2'}>{entry.service}</span>
@@ -124,7 +124,7 @@ function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid: (p: Payout) 
             {entry.reversed ? ' · car was voided' : ''}
           </p>
         </div>
-        <p className={`num font-bold ${entry.reversed ? 'text-ink-3 line-through' : 'text-ink'}`}>{formatGHS(entry.amount)}</p>
+        <p className={`num font-semibold ${entry.reversed ? 'text-ink-3 line-through' : 'text-ink'}`}>{formatGHS(entry.amount)}</p>
       </li>
     );
   }
@@ -132,7 +132,7 @@ function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid: (p: Payout) 
     <li className="flex items-start gap-3 bg-band/50 px-4 py-2.5">
       <div className={`min-w-0 flex-1 ${entry.voided ? 'text-ink-3' : ''}`}>
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={`font-bold ${entry.voided ? 'line-through' : 'text-ink'}`}>Paid out</span>
+          <span className={`font-medium ${entry.voided ? 'line-through' : 'text-ink'}`}>Paid out</span>
           <Pill tone={entry.voided ? 'grey' : 'green'}>{entry.voided ? 'Voided' : methodLabel(entry.method)}</Pill>
         </p>
         <p className="text-xs text-ink-3">
@@ -140,12 +140,12 @@ function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid: (p: Payout) 
           {entry.note ? ` · ${entry.note}` : ''}
         </p>
         {entry.voided && (
-          <p className="text-xs font-semibold text-red-d">
+          <p className="text-xs font-medium text-red-d">
             Voided by {entry.voided.by}: {entry.voided.reason}
           </p>
         )}
       </div>
-      <p className={`num font-bold ${entry.voided ? 'text-ink-3 line-through' : 'text-green'}`}>−{formatGHS(entry.amount)}</p>
+      <p className={`num font-semibold ${entry.voided ? 'text-ink-3 line-through' : 'text-green'}`}>−{formatGHS(entry.amount)}</p>
       {!entry.voided && (
         <button type="button" className="tap text-sm text-red-d" onClick={() => onVoid(entry)}>
           Void
@@ -178,18 +178,18 @@ function LedgerPanel({ attendantId, onClose }: { attendantId: number | null; onC
               ['Owed', data.owed],
             ].map(([label, value], i) => (
               <div key={label} className={`px-3 py-2.5 ${i > 0 ? 'border-l border-line' : ''}`}>
-                <dt className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink-3">{label}</dt>
+                <dt className="text-xs font-medium text-ink-3">{label}</dt>
                 <dd className={`display num mt-1 text-[20px] leading-none ${label === 'Owed' ? 'text-navy' : 'text-ink-2'}`}>{formatGHS(value as number)}</dd>
               </div>
             ))}
           </dl>
-          {data.owed < 0 && <p className="border-l-4 border-amber bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber">Paid more than earned, because a car was voided after payout.</p>}
+          {data.owed < 0 && <p className="border-l-4 border-amber bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber">Paid more than earned, because a car was voided after payout</p>}
           <button type="button" className="btn btn-primary" disabled={data.owed <= 0} onClick={() => setPaying(true)}>
             Pay out
           </button>
           <div className="-mx-4 border-y border-line lg:-mx-5">
             {data.entries.length === 0 ? (
-              <EmptyRow>Nothing earned yet.</EmptyRow>
+              <EmptyRow>Nothing earned yet</EmptyRow>
             ) : (
               <ul className="divide-y divide-line-2">
                 {data.entries.map((e) => (
@@ -218,7 +218,7 @@ export function Commissions() {
 
       <section aria-label="Commission owed" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
         <div className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3">
-          <h3 className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Owed to attendants</h3>
+          <h3 className="text-sm font-medium text-ink-2">Owed to attendants</h3>
           <p className="display num text-[21px] leading-none text-navy lg:text-[24px]">{formatGHS(data?.totalOwed ?? 0)}</p>
         </div>
         {overview.isPending ? (
@@ -230,19 +230,19 @@ export function Commissions() {
                 <button type="button" onClick={() => setOpen(a.attendantId)} className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-band">
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className={`truncate font-bold ${a.active ? 'text-ink' : 'text-ink-3'}`}>{a.name}</span>
+                      <span className={`truncate font-medium ${a.active ? 'text-ink' : 'text-ink-3'}`}>{a.name}</span>
                       {!a.active && <Pill tone="grey">Left</Pill>}
                     </span>
                     <span className="block text-xs text-ink-3">{formatGHS(a.earned7d)} earned this week</span>
                   </span>
-                  <span className={`num font-bold ${a.owed > 0 ? 'text-ink' : 'text-ink-3'}`}>{formatGHS(a.owed)}</span>
+                  <span className={`num font-semibold ${a.owed > 0 ? 'text-ink' : 'text-ink-3'}`}>{formatGHS(a.owed)}</span>
                   <span aria-hidden="true" className="text-ink-3">›</span>
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          <EmptyRow>No attendants yet.</EmptyRow>
+          <EmptyRow>No attendants yet</EmptyRow>
         )}
       </section>
 

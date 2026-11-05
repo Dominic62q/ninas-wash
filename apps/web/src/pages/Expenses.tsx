@@ -66,7 +66,7 @@ function AddExpensePanel({ open, onClose, closedDays }: { open: boolean; onClose
   return (
     <Panel open={open} onClose={onClose} title="Add an expense">
       <div className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-bold text-ink-2">Category</span>
+        <span className="text-sm font-medium text-ink-2">Category</span>
         <Select label="Category" value={category} options={EXPENSE_CATEGORIES.map((c) => ({ value: c as string, label: c }))} onChange={(v) => { setCategory(v); setError(null); }} />
       </div>
       <Field label="Amount (GH₵)">
@@ -80,7 +80,7 @@ function AddExpensePanel({ open, onClose, closedDays }: { open: boolean; onClose
         <input className="input" value={note} onChange={(e) => { setNote(e.target.value); setError(null); }} maxLength={200} autoComplete="off" placeholder={category === 'Other' ? 'Gate padlock' : '20 litres of liquid soap'} />
       </Field>
       <div className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-bold text-ink-2">Day it was spent</span>
+        <span className="text-sm font-medium text-ink-2">Day it was spent</span>
         <Select label="Day" value={spentOn} options={dayOptions(closedDays)} onChange={setSpentOn} />
       </div>
       <FormError message={error ?? (save.isError ? errorMessage(save.error) : null)} />
@@ -139,7 +139,7 @@ function ExpenseRow({ expense, closed, canVoid, onVoid }: { expense: ExpenseDto;
     <li className="flex items-start gap-3 px-4 py-2.5">
       <div className={`min-w-0 flex-1 ${gone ? 'text-ink-3' : ''}`}>
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={`font-bold ${gone ? 'line-through' : 'text-ink'}`}>{expense.category}</span>
+          <span className={`font-medium ${gone ? 'line-through' : 'text-ink'}`}>{expense.category}</span>
           {gone ? (
             <Pill tone="grey">Voided</Pill>
           ) : (
@@ -155,12 +155,12 @@ function ExpenseRow({ expense, closed, canVoid, onVoid }: { expense: ExpenseDto;
           {expense.by}, {clock(expense.at)}
         </p>
         {expense.voided && (
-          <p className="text-xs font-semibold text-red-d">
+          <p className="text-xs font-medium text-red-d">
             Voided by {expense.voided.by}: {expense.voided.reason}
           </p>
         )}
       </div>
-      <p className={`num font-bold ${gone ? 'text-ink-3 line-through' : 'text-ink'}`}>{formatGHS(expense.amount)}</p>
+      <p className={`num font-semibold ${gone ? 'text-ink-3 line-through' : 'text-ink'}`}>{formatGHS(expense.amount)}</p>
       {canVoid && !gone && !closed && (
         <button type="button" className="tap text-sm text-red-d" onClick={onVoid}>
           Void
@@ -233,7 +233,7 @@ export function Expenses() {
               return (
                 <Fragment key={e.id}>
                   {first && (
-                    <li className="flex items-center gap-2 border-b border-t border-line bg-band px-4 py-1.5 text-xs font-bold uppercase tracking-[0.06em] text-ink-2 first:border-t-0">
+                    <li className="flex items-center gap-2 border-b border-t border-line bg-band px-4 py-1.5 text-xs font-medium text-ink-2 first:border-t-0">
                       {dayName(e.spentOn)}
                       {closed && <Pill tone="grey">Closed</Pill>}
                     </li>
@@ -244,7 +244,7 @@ export function Expenses() {
             })}
           </ul>
         ) : (
-          <EmptyRow>{range === 'today' ? 'No expenses today.' : 'No expenses in this period.'}</EmptyRow>
+          <EmptyRow>{range === 'today' ? 'No expenses today' : 'No expenses in this period'}</EmptyRow>
         )}
       </section>
       {data && data.expenses.length > 0 && <p className="text-center text-xs text-ink-3">{plural(data.expenses.length, 'expense')}. Voided ones are not counted above.</p>}

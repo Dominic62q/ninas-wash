@@ -50,14 +50,14 @@ function History({ service }: { service: ServiceDto }) {
   const rows = history.data?.history ?? [];
   return (
     <section aria-label="History">
-      <h3 className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">History</h3>
+      <h3 className="text-sm font-medium text-ink-2">History</h3>
       {history.isPending && <p className="mt-2 text-ink-3">Loading…</p>}
       {history.isError && <p className="mt-2 text-red-d">{errorMessage(history.error)}</p>}
-      {history.isSuccess && rows.length === 0 && <p className="mt-2 text-ink-3">No changes yet.</p>}
+      {history.isSuccess && rows.length === 0 && <p className="mt-2 text-ink-3">No changes yet</p>}
       <ul className="mt-2 divide-y divide-line-2 border-y border-line-2">
         {rows.map((r) => (
           <li key={r.id} className="py-2.5">
-            <p className="text-sm font-semibold text-ink">{describe(r, service)}</p>
+            <p className="text-sm font-medium text-ink">{describe(r, service)}</p>
             <p className="text-xs text-ink-3">
               {r.by ?? 'Someone'}, {shortDateTime(r.at)}
             </p>
@@ -151,12 +151,12 @@ function ServiceForm({ service, onDone }: { service: ServiceDto | null; onDone: 
         />
         <Field
           label={kind === 'percent' ? 'Commission (%)' : 'Commission (GH₵)'}
-          hint="New jobs only."
+          hint="New jobs only"
           error={errors.commissionValue}
         >
           <input className="input num" inputMode="decimal" value={commission} onChange={(e) => setCommission(e.target.value)} aria-invalid={!!errors.commissionValue} />
         </Field>
-        <Check label="Offered" hint="Off hides it from new jobs." checked={active} onChange={setActive} />
+        <Check label="Offered" hint="Off hides it from new jobs" checked={active} onChange={setActive} />
         <FormError message={save.isError ? errorMessage(save.error) : null} />
         <div className="flex gap-3">
           <button type="submit" className="btn btn-primary flex-1" disabled={save.isPending}>
@@ -203,7 +203,7 @@ export function Services() {
       </div>
 
       <section aria-label="Services" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
-        <div className="hidden grid-cols-[1fr_110px_130px_90px_100px] gap-4 border-b border-line bg-band px-4 py-2.5 text-xs font-bold uppercase tracking-[0.06em] text-ink-3 lg:grid">
+        <div className="hidden grid-cols-[1fr_110px_130px_90px_100px] gap-4 border-b border-line bg-band px-4 py-2.5 text-xs font-medium text-ink-3 lg:grid">
           <span>Service</span>
           <span className="text-right">Price (GH₵)</span>
           <span>Commission</span>
@@ -221,8 +221,8 @@ export function Services() {
                 onClick={() => setEditing(s)}
                 className="grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-4 py-3.5 text-left hover:bg-band lg:grid-cols-[1fr_110px_130px_90px_100px]"
               >
-                <span className={`font-bold ${s.active ? 'text-ink' : 'text-ink-3'}`}>{s.name}</span>
-                <span className="num text-right font-bold text-ink">{formatAmount(s.price)}</span>
+                <span className={`font-medium ${s.active ? 'text-ink' : 'text-ink-3'}`}>{s.name}</span>
+                <span className="num text-right font-semibold text-ink">{formatAmount(s.price)}</span>
                 <span className="col-start-1 text-sm text-ink-2 lg:col-start-auto">{commissionText(s.commissionKind, s.commissionValue)}<span className="lg:hidden"> commission</span></span>
                 <span className="num hidden text-right text-ink-2 lg:block">{s.sold7d}</span>
                 <span className="col-start-2 row-start-2 justify-self-end lg:col-start-auto lg:row-start-auto lg:justify-self-start">

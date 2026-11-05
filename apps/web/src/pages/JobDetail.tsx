@@ -136,7 +136,7 @@ function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: bool
 
   return (
     <Panel open={open} onClose={onClose} title="Add a service">
-      {options.length === 0 && <p className="text-ink-3">Every service is already on this job.</p>}
+      {options.length === 0 && <p className="text-ink-3">Every service is already on this job</p>}
       <div className="flex flex-col gap-2">
         {options.map((s) => (
           <button
@@ -148,8 +148,8 @@ function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: bool
               serviceId === s.id ? 'border-blue bg-blue-50' : 'border-line-strong bg-surface'
             }`}
           >
-            <span className="font-bold text-ink">{s.name}</span>
-            <span className="num font-bold text-navy">{formatGHS(s.price)}</span>
+            <span className="font-medium text-ink">{s.name}</span>
+            <span className="num font-semibold text-navy">{formatGHS(s.price)}</span>
           </button>
         ))}
       </div>
@@ -254,7 +254,7 @@ function Tracker({ status }: { status: JobDetailDto['status'] }) {
         const done = i < at;
         const now = i === at;
         return (
-          <li key={name} aria-current={now ? 'step' : undefined} className="relative flex flex-1 flex-col items-center gap-1.5 text-[12px] font-semibold">
+          <li key={name} aria-current={now ? 'step' : undefined} className="relative flex flex-1 flex-col items-center gap-1.5 text-[12px] font-medium">
             {i > 0 && <span aria-hidden="true" className={`absolute right-1/2 top-[11px] h-0.5 w-full ${i <= at ? 'bg-blue' : 'bg-line'}`} />}
             <span
               aria-hidden="true"
@@ -381,7 +381,7 @@ export function JobDetail() {
           )}
         </div>
       )}
-      {open && job.status === 'pending' && missing && <p className="-mt-2 text-sm font-semibold text-amber">Assign attendants to start.</p>}
+      {open && job.status === 'pending' && missing && <p className="-mt-2 text-sm font-medium text-amber">Assign attendants to start</p>}
       {/* A finished job: the main step on its own line, everything else together on one row beneath it. */}
       {!open && !job.voided && (
         <div className="flex flex-wrap gap-2">
@@ -413,16 +413,16 @@ export function JobDetail() {
         </div>
       )}
       {finished && job.balance > 0 && can('job.dispatch') && !mayRelease && (
-        <p className="-mt-2 text-sm font-semibold text-amber">Collect {formatGHS(job.balance)} to dispatch, or ask a manager.</p>
+        <p className="-mt-2 text-sm font-medium text-amber">Collect {formatGHS(job.balance)} to dispatch, or ask a manager.</p>
       )}
 
       <section aria-label="Services" className={card}>
-        <h3 className="border-b border-line px-4 py-3 text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Services</h3>
+        <h3 className="border-b border-line px-4 py-3 text-sm font-medium text-ink-2">Services</h3>
         <ul className="divide-y divide-line-2">
           {job.lines.map((l) => (
             <li key={l.id} className="flex items-start gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-ink">{l.name}</p>
+                <p className="font-medium text-ink">{l.name}</p>
                 {l.attendants.length > 0 ? (
                   <p className="text-sm text-ink-2">
                     {l.attendants.map((a) => (l.attendants.length > 1 ? `${a.name} ${a.shareBp / 100}%` : a.name)).join(', ')}
@@ -435,7 +435,7 @@ export function JobDetail() {
                   <p className="text-sm text-ink-3">None</p>
                 )}
               </div>
-              <p className="num font-bold text-ink">{formatGHS(l.price)}</p>
+              <p className="num font-semibold text-ink">{formatGHS(l.price)}</p>
             </li>
           ))}
         </ul>
@@ -460,7 +460,7 @@ export function JobDetail() {
             </>
           )}
           <div className="flex items-baseline justify-between">
-            <dt className="font-bold text-ink">Total</dt>
+            <dt className="font-medium text-ink">Total</dt>
             <dd className="display text-[24px] leading-none text-navy lg:text-[28px]">{formatGHS(job.total)}</dd>
           </div>
         </dl>
@@ -475,7 +475,7 @@ export function JobDetail() {
 
       <section aria-label="Payments" className={card}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-3">
-          <h3 className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Payments</h3>
+          <h3 className="text-sm font-medium text-ink-2">Payments</h3>
           <PayPill total={job.total} paid={job.paid} />
           {canPay && !finished && (
             <button type="button" className="btn ml-auto h-9 px-3 text-sm" onClick={() => setDialog({ kind: 'pay' })}>
@@ -491,13 +491,13 @@ export function JobDetail() {
           </div>
         )}
         {job.payments.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-ink-3">Nothing paid yet.</p>
+          <p className="px-4 py-3 text-sm text-ink-3">Nothing paid yet</p>
         ) : (
           <ul className="divide-y divide-line-2">
             {job.payments.map((p) => (
               <li key={p.id} className="flex items-start gap-3 px-4 py-2.5">
                 <div className={`min-w-0 flex-1 ${p.voided ? 'text-ink-3' : ''}`}>
-                  <p className={`font-bold ${p.voided ? 'line-through' : 'text-ink'}`}>
+                  <p className={`font-medium ${p.voided ? 'line-through' : 'text-ink'}`}>
                     {methodLabel(p.method)} <span className="num">{formatGHS(p.amount)}</span>
                   </p>
                   <p className="text-xs text-ink-3">
@@ -505,7 +505,7 @@ export function JobDetail() {
                     {p.momoReference && <> · Ref {p.momoReference}</>}
                   </p>
                   {p.voided && (
-                    <p className="text-xs font-semibold text-red-d">
+                    <p className="text-xs font-medium text-red-d">
                       Voided by {p.voided.by}: {p.voided.reason}
                     </p>
                   )}
@@ -525,23 +525,23 @@ export function JobDetail() {
             <dd>{formatGHS(job.paid)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="font-bold text-ink">Balance</dt>
-            <dd className={`font-bold ${job.balance > 0 ? 'text-amber' : 'text-green'}`}>{formatGHS(job.balance)}</dd>
+            <dt className="font-medium text-ink">Balance</dt>
+            <dd className={`font-medium ${job.balance > 0 ? 'text-amber' : 'text-green'}`}>{formatGHS(job.balance)}</dd>
           </div>
         </dl>
         {job.dispatchOverride && (
           <p className="border-t border-line bg-amber-50 px-4 py-2.5 text-sm text-ink">
-            <strong>Left with a balance.</strong> {job.dispatchOverride.by}: {job.dispatchOverride.note}
+            <strong>Left with a balance</strong> {job.dispatchOverride.by}: {job.dispatchOverride.note}
           </p>
         )}
       </section>
 
       <div className="grid gap-5 sm:grid-cols-2">
         <section aria-label="Car and customer" className={`${card} px-4 py-3`}>
-          <h3 className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">Customer</h3>
+          <h3 className="text-sm font-medium text-ink-2">Customer</h3>
           {job.customer ? (
             <>
-              <p className="mt-1 font-bold text-ink">{job.customer.name}</p>
+              <p className="mt-1 font-medium text-ink">{job.customer.name}</p>
               <p className="text-sm text-ink-2">{job.customer.phone ? formatPhone(job.customer.phone) : 'No phone'}</p>
               <p className="mt-1 text-xs text-ink-3">{plural(job.customer.visits, 'visit')}</p>
             </>
@@ -553,11 +553,11 @@ export function JobDetail() {
         </section>
 
         <section aria-label="History" className={`${card} px-4 py-3`}>
-          <h3 className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">History</h3>
+          <h3 className="text-sm font-medium text-ink-2">History</h3>
           <ul className="mt-1 divide-y divide-line-2">
             {job.history.map((h) => (
               <li key={h.id} className="py-2">
-                <p className="text-sm font-semibold text-ink">{describe(h)}</p>
+                <p className="text-sm font-medium text-ink">{describe(h)}</p>
                 <p className="text-xs text-ink-3">
                   {h.by ?? 'Someone'}, {shortDateTime(h.at)}
                 </p>

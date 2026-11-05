@@ -47,7 +47,7 @@ export function ChangePassword() {
     <main className="mx-auto flex min-h-screen w-full max-w-[460px] flex-col justify-center gap-6 px-5 py-10">
       <div>
         <h1 className="display text-[24px] leading-none text-navy lg:text-[30px]">{forced ? 'Choose your password' : 'Change password'}</h1>
-        <p className="mt-2 text-ink-2">{forced ? 'Choose a new password to continue.' : 'Other devices will be signed out.'}</p>
+        <p className="mt-2 text-ink-2">{forced ? 'Choose a new password to continue' : 'Other devices will be signed out'}</p>
       </div>
       <form onSubmit={submit} onChange={() => setErrors((e) => (Object.keys(e).length ? {} : e))} noValidate className="flex flex-col gap-5">
         <Field label={forced ? 'Temporary password' : 'Current password'} error={errors.currentPassword}>
@@ -60,7 +60,7 @@ export function ChangePassword() {
             autoComplete="current-password"
           />
         </Field>
-        <Field label="New password" hint="At least 8 characters." error={errors.newPassword}>
+        <Field label="New password" hint="At least 8 characters" error={errors.newPassword}>
           <input
             className="input"
             type="password"

@@ -218,7 +218,7 @@ export function MultiSelect({
           <Panel open={open} onClose={() => setOpen(false)} title={label} tall={options.length > 6}>
             {search}
             <ul role="listbox" aria-label={label} aria-multiselectable="true" className="-mx-4 flex flex-1 flex-col">
-              {shown.length === 0 && <li className="px-4 py-3 text-sm text-ink-3">No match.</li>}
+              {shown.length === 0 && <li className="px-4 py-3 text-sm text-ink-3">No match</li>}
               {shown.map((o) => {
                 const on = value.includes(o.value);
                 return (
@@ -251,7 +251,7 @@ export function MultiSelect({
             <div className={`${popoverClass()} scroll-mb-28`} ref={list}>
               {search && <div className="sticky top-0 border-b border-line-2 bg-surface p-2">{search}</div>}
               <ul role="listbox" aria-label={label} aria-multiselectable="true">
-                {shown.length === 0 && <li className="px-4 py-3 text-sm text-ink-3">No match.</li>}
+                {shown.length === 0 && <li className="px-4 py-3 text-sm text-ink-3">No match</li>}
                 {shown.map((o) => {
                   const on = value.includes(o.value);
                   return (

@@ -51,7 +51,7 @@ function WasherRow({ people, value, label, onToggle }: { people: { id: number; n
               aria-pressed={on}
               aria-label={p.name}
               onClick={() => onToggle(p.id)}
-              className={`flex w-[60px] cursor-pointer flex-col items-center gap-1.5 text-[12.5px] font-semibold ${on ? 'text-navy' : 'text-ink-2'}`}
+              className={`flex w-[60px] cursor-pointer flex-col items-center gap-1.5 text-[12.5px] font-medium ${on ? 'text-navy' : 'text-ink-2'}`}
             >
               <span className={`rounded-full transition-opacity ${on ? 'opacity-100 ring-2 ring-white ring-offset-2 ring-offset-blue' : 'opacity-50'}`}>
                 <Avatar name={p.name} className="!h-11 !w-11 !text-sm" />
@@ -159,7 +159,7 @@ export function NewJob() {
     const found: Record<string, string> = {};
     if (discountValue === null) found.discount = 'Enter the discount, like 5 or 5.50';
     if (start && [...picked.values()].some((ids) => ids.length === 0)) {
-      found.lines = 'Pick attendants for each service, or save as pending.';
+      found.lines = 'Pick attendants for each service, or save as pending';
     }
     const wantsOwner = (isNewCar || needsOwner) && saveOwner;
     const parsed = createJobInput.safeParse({
@@ -245,7 +245,7 @@ export function NewJob() {
                 >
                   <Plate plate={m.vehicle.plate} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{[m.owner ?? 'Walk-in', m.vehicle.makeModel].filter(Boolean).join(' · ')}</span>
-                  {m.onBoard && <span className="text-xs font-bold text-amber">On the board</span>}
+                  {m.onBoard && <span className="text-xs font-medium text-amber">On the board</span>}
                 </button>
               </li>
             ))}
@@ -274,7 +274,7 @@ export function NewJob() {
                   <span className="min-w-0 flex-1 truncate text-sm text-ink-2">
                     {[m.owner ?? 'Walk-in', m.vehicle.makeModel].filter(Boolean).join(' · ')}
                   </span>
-                  {m.onBoard && <span className="text-xs font-bold text-amber">On the board</span>}
+                  {m.onBoard && <span className="text-xs font-medium text-amber">On the board</span>}
                 </button>
               </li>
             ))}
@@ -289,7 +289,7 @@ export function NewJob() {
         )}
         {known?.vehicle && (
           <div className="border-l-4 border-green bg-green-50 px-3 py-2.5 text-sm">
-            <p className="font-bold text-ink">
+            <p className="font-medium text-ink">
               {[known.vehicle.makeModel, known.vehicle.carType && CAR_LABEL[known.vehicle.carType]].filter(Boolean).join(' · ') || 'A car we know'}
             </p>
             <p className="text-ink-2">
@@ -303,7 +303,7 @@ export function NewJob() {
         )}
         {isNewCar && (
           <>
-            <p className="border-l-4 border-blue bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-d">New car</p>
+            <p className="border-l-4 border-blue bg-blue-50 px-3 py-2.5 text-sm font-medium text-blue-d">New car</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Make and model (optional)">
                 <input className="input" value={makeModel} onChange={(e) => setMakeModel(e.target.value)} autoComplete="off" placeholder="Toyota Corolla" />
@@ -373,8 +373,8 @@ export function NewJob() {
             return (
               <div key={s.id} className="rise flex flex-col gap-2.5 border-[1.5px] border-blue bg-blue-50 p-3 max-lg:rounded-[10px] max-lg:border-0">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="min-w-0 flex-1 truncate font-bold text-ink">{s.name}</p>
-                  <span className="num font-bold text-navy">{formatGHS(s.price)}</span>
+                  <p className="min-w-0 flex-1 truncate font-medium text-ink">{s.name}</p>
+                  <span className="num font-semibold text-navy">{formatGHS(s.price)}</span>
                   <button type="button" aria-label={`Remove ${s.name}`} onClick={() => toggleService(s.id)} className="tap -mr-1 px-1.5 text-lg leading-none text-ink-3">
                     ✕
                   </button>
@@ -411,7 +411,7 @@ export function NewJob() {
               </div>
             );
           })}
-        {errors.lines && <p role="alert" className="text-[13px] font-semibold text-red-d">{errors.lines}</p>}
+        {errors.lines && <p role="alert" className="text-[13px] font-medium text-red-d">{errors.lines}</p>}
 
         <div className="grid grid-cols-2 gap-2 max-lg:hidden sm:grid-cols-3">
           {serviceList
@@ -424,8 +424,8 @@ export function NewJob() {
                 onClick={() => toggleService(s.id)}
                 className="flex min-h-[52px] cursor-pointer flex-col justify-center border-[1.5px] border-line-strong bg-surface px-3 py-1.5 text-left"
               >
-                <span className="text-sm font-bold leading-tight text-ink">{s.name}</span>
-                <span className="num text-sm font-bold text-navy">{formatGHS(s.price)}</span>
+                <span className="text-sm font-medium leading-tight text-ink">{s.name}</span>
+                <span className="num text-sm font-semibold text-navy">{formatGHS(s.price)}</span>
               </button>
             ))}
         </div>
@@ -439,7 +439,7 @@ export function NewJob() {
             <WasherRow people={people} value={onAll} label="every service" onToggle={toggleCrew} />
           </>
         )}
-        <Check label="Start washing now" checked={startNow} onChange={setStartNow} hint="Leave off to book the car as pending." />
+        <Check label="Start washing now" checked={startNow} onChange={setStartNow} hint="Leave off to book the car as pending" />
       </section>
 
       <section aria-label="Price" className="flex flex-col gap-3 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card lg:gap-4 lg:p-5">
@@ -474,7 +474,7 @@ export function NewJob() {
             </>
           )}
           <div className="flex items-baseline justify-between max-lg:hidden">
-            <dt className="font-bold text-ink">Total</dt>
+            <dt className="font-medium text-ink">Total</dt>
             <dd className="display text-[24px] leading-none text-navy lg:text-[28px]">{formatGHS(total)}</dd>
           </div>
         </dl>
@@ -493,7 +493,7 @@ export function NewJob() {
       {/* Phone: the total and the one button, fixed to the bottom. */}
       <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-auto flex items-center gap-3.5 rounded-t-[18px] bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(7,31,71,0.14)] lg:hidden">
         <div className="leading-tight">
-          <p className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-3">Total</p>
+          <p className="text-xs font-medium text-ink-3">Total</p>
           <p className="display num whitespace-nowrap text-2xl text-navy">{formatGHS(total)}</p>
           <p className="text-xs text-ink-3">
             {plural(picked.size, 'service')}, {plural(onAny, 'washer')}

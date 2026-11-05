@@ -64,11 +64,11 @@ export function Panel({
 export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string | undefined; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[13px] font-bold text-ink-2">{label}</span>
+      <span className="text-sm font-medium text-ink-2">{label}</span>
       {children}
       {hint && !error && <span className="text-xs text-ink-3">{hint}</span>}
       {error && (
-        <span role="alert" className="text-[13px] font-semibold text-red-d">
+        <span role="alert" className="text-[13px] font-medium text-red-d">
           {error}
         </span>
       )}
@@ -79,7 +79,7 @@ export function Field({ label, hint, error, children }: { label: string; hint?: 
 export function FormError({ message }: { message: string | null | undefined }) {
   if (!message) return null;
   return (
-    <p role="alert" className="border-l-4 border-red bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-d">
+    <p role="alert" className="border-l-4 border-red bg-red-50 px-3 py-2.5 text-sm font-medium text-red-d">
       {message}
     </p>
   );
@@ -90,7 +90,7 @@ export function Check({ label, checked, onChange, hint }: { label: string; check
     <label className="flex cursor-pointer items-start gap-3">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-blue" />
       <span className="flex flex-col">
-        <span className="text-sm font-bold text-ink">{label}</span>
+        <span className="text-sm font-medium text-ink">{label}</span>
         {hint && <span className="text-xs text-ink-3">{hint}</span>}
       </span>
     </label>
@@ -111,17 +111,17 @@ export function Choice<T extends string>({
 }) {
   return (
     <div role="radiogroup" aria-label={label} className="flex flex-col gap-1.5">
-      <span className="text-[13px] font-bold text-ink-2">{label}</span>
-      <div className="flex">
-        {options.map((o, i) => (
+      <span className="text-sm font-medium text-ink-2">{label}</span>
+      <div className="flex gap-0.5 rounded-[10px] bg-line-2 p-0.5">
+        {options.map((o) => (
           <button
             key={o.value}
             type="button"
             role="radio"
             aria-checked={value === o.value}
             onClick={() => onChange(o.value)}
-            className={`h-10 flex-1 cursor-pointer border-[1.5px] px-3 text-sm font-bold lg:h-12 ${i > 0 ? '-ml-[1.5px]' : ''} ${
-              value === o.value ? 'z-10 border-blue bg-blue-50 text-blue-d' : 'border-line-strong bg-surface text-ink-2'
+            className={`h-9 flex-1 cursor-pointer rounded-lg px-3 text-sm font-medium transition-colors lg:h-11 ${
+              value === o.value ? 'bg-surface text-navy shadow-card' : 'text-ink-2'
             }`}
           >
             {o.label}
@@ -156,7 +156,7 @@ export function Strip({ items, roomy, compact }: { items: { label: string; short
           className={`flex min-w-0 flex-col py-2.5 max-lg:items-center ${compact ? 'px-1 max-lg:py-2' : 'px-2'} max-lg:text-center lg:px-4 lg:py-3.5 ${i % phoneCols > 0 ? 'max-lg:border-l max-lg:border-line' : ''} ${i >= phoneCols ? 'max-lg:border-t max-lg:border-line' : ''} ${i > 0 ? 'lg:border-l lg:border-line' : ''}`}
         >
           <dd className={`display num order-first leading-none text-navy lg:order-none lg:mt-1 lg:text-[26px] ${phoneCols === 2 ? 'text-[22px]' : compact ? 'text-[13.5px]' : 'text-[18px]'}`}>{item.value}</dd>
-          <dt className="mt-1 text-[11px] font-bold leading-tight text-ink-3 lg:order-first lg:mt-0 lg:text-xs lg:uppercase lg:tracking-[0.06em]">
+          <dt className="mt-1 text-[11px] font-medium leading-tight text-ink-3 lg:order-first lg:mt-0 lg:text-xs">
             <span className="lg:hidden">{item.short ?? item.label}</span>
             <span className="hidden lg:inline">{item.label}</span>
           </dt>
@@ -172,17 +172,17 @@ export function TakingsCard({ takings, label = 'Taken' }: { takings: { cash: num
   return (
     <section aria-label="Takings" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
       <div className="flex items-baseline justify-between gap-3 px-4 pb-2 pt-3">
-        <p className="text-[13px] font-bold uppercase tracking-[0.06em] text-ink-3">
+        <p className="text-sm font-medium text-ink-2">
           {label} · {plural(takings.payments, 'payment')}
         </p>
         <p className="display num text-[24px] leading-none text-navy lg:text-[28px]">{formatGHS(takings.total)}</p>
       </div>
       <div className="grid grid-cols-2 border-t border-line text-sm">
         <p className="flex items-baseline justify-between gap-2 px-4 py-2 text-ink-2">
-          Cash <span className="num font-bold text-ink">{formatGHS(takings.cash)}</span>
+          Cash <span className="num font-semibold text-ink">{formatGHS(takings.cash)}</span>
         </p>
         <p className="flex items-baseline justify-between gap-2 border-l border-line px-4 py-2 text-ink-2">
-          MoMo <span className="num font-bold text-ink">{formatGHS(takings.momo)}</span>
+          MoMo <span className="num font-semibold text-ink">{formatGHS(takings.momo)}</span>
         </p>
       </div>
     </section>

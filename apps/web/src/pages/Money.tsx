@@ -46,7 +46,7 @@ export function Money() {
       {can('dailyclose.close') && (
         <section aria-label="The drawer" className="flex flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-card">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-3">{expected !== null ? 'Should be in the drawer' : 'Today’s drawer'}</p>
+            <p className="text-xs font-medium text-ink-3">{expected !== null ? 'Should be in the drawer' : 'Today’s drawer'}</p>
             {s && (s.locked ? <Pill tone="green">Closed</Pill> : <Pill tone="grey">Not closed</Pill>)}
           </div>
           {expected !== null && cash ? (
@@ -58,7 +58,7 @@ export function Money() {
               </p>
             </>
           ) : (
-            <p className="text-[13px] text-ink-3">{s?.locked ? 'Today is closed.' : 'Count the cash at the end of the day and close.'}</p>
+            <p className="text-[13px] text-ink-3">{s?.locked ? 'Today is closed' : 'Count the cash at the end of the day and close'}</p>
           )}
           <Link to="/daily-close" className="btn btn-primary h-[50px] text-[15.5px] no-underline">
             {s?.locked ? 'See today’s close' : 'Count the drawer and close'}
@@ -76,10 +76,10 @@ export function Money() {
                   <Icon name={item.icon} size={18} />
                 </span>
                 <span className="min-w-0 flex-1 leading-tight">
-                  <span className="block font-semibold">{item.label}</span>
+                  <span className="block font-medium">{item.label}</span>
                   {v?.note && <span className="block truncate text-xs text-ink-3">{v.note}</span>}
                 </span>
-                {v && <span className="num font-bold">{v.text}</span>}
+                {v && <span className="num font-semibold">{v.text}</span>}
                 <span aria-hidden="true" className="text-ink-3">
                   ›
                 </span>

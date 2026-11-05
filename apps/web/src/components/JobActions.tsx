@@ -15,7 +15,7 @@ interface Asking {
 const COPY: Record<JobStep, { title: (plate: string) => string; message: string; label: string; done: (plate: string) => string }> = {
   start: {
     title: (p) => `Start washing ${p}?`,
-    message: 'The car moves to Washing and the timer starts.',
+    message: 'The car moves to Washing and the timer starts',
     label: 'Start wash',
     done: (p) => `Wash started on ${p}`,
   },

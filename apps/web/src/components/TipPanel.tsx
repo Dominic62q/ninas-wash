@@ -71,19 +71,19 @@ export function TipPanel({ open, onClose, attendants, job, jobOptions }: TipTarg
         </p>
       ) : (
         <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-bold text-ink-2">Who is it for?</span>
+          <span className="text-sm font-medium text-ink-2">Who is it for?</span>
           <Select label="Attendant" value={attendantId} options={options} onChange={(v) => { setAttendantId(v); setError(null); }} invalid={!!error && !attendantId} />
         </div>
       )}
       {!job && jobOptions && jobOptions.length > 1 && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-bold text-ink-2">Which car? (optional)</span>
+          <span className="text-sm font-medium text-ink-2">Which car? (optional)</span>
           <Select label="Car" value={jobPick} options={jobOptions} onChange={setJobPick} />
         </div>
       )}
       <Choice label="How was it given?" value={kind} options={KIND_OPTIONS} onChange={setKind} />
       <p className="-mt-3 text-xs text-ink-3">
-        {kind === 'held' ? 'Money we took at the till and keep until a manager hands it over.' : 'The customer gave it straight to them. Written down only.'}
+        {kind === 'held' ? 'Money we took at the till and keep until a manager hands it over' : 'The customer gave it straight to them. Written down only.'}
       </p>
       <Field label="Amount (GH₵)">
         <input className="input" inputMode="decimal" value={amountText} onChange={(e) => { setAmountText(e.target.value); setError(null); }} autoComplete="off" placeholder="0.00" aria-label="Amount" />
