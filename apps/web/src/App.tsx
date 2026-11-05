@@ -19,6 +19,7 @@ import { Jobs } from './pages/Jobs';
 import { Me } from './pages/Me';
 import { Money } from './pages/Money';
 import { NewJob } from './pages/NewJob';
+import { Receipt } from './pages/Receipt';
 import { Reports } from './pages/Reports';
 import { ExpenseCategories } from './pages/ExpenseCategories';
 import { PaymentMethods } from './pages/PaymentMethods';
@@ -80,6 +81,7 @@ export function App() {
       <ConnectionBanner />
       <Routes>
         <Route path="/sign-in" element={<SignIn />} />
+        <Route path="/r/:token" element={<Receipt />} />
         <Route element={<RequireSignIn />}>
           <Route path="/change-password" element={<ChangePassword />} />
           <Route element={<Shell />}>

@@ -55,6 +55,7 @@ const LABELS: Record<string, string> = {
   'expense.void': 'Voided an expense',
   'job.add_line': 'Added a service to a job',
   'job.assign': 'Changed who worked on a job',
+  'job.receipt_link': 'Made a receipt link to share',
   'job.create': 'Booked a car',
   'job.discount': 'Changed a discount',
   'job.dispatch': 'Released a car',

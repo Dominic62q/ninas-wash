@@ -44,7 +44,7 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 // ---- reading ----------------------------------------------------------------
 
-async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null> {
+export async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null> {
   const [row] = await db
     .select({ job: jobs, vehicle: vehicles, creator: users.name })
     .from(jobs)

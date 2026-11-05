@@ -309,6 +309,30 @@ export function JobDetail() {
   const job = query.data?.job;
 
   const steps = useJobSteps();
+  const toast = useToast();
+
+  /** The customer's receipt is a link. The phone's own share sheet sends it; otherwise it is copied. */
+  const shareReceipt = useMutation({
+    mutationFn: () => api<{ token: string }>(`/receipts/for-job/${id}`, { method: 'POST' }),
+    onSuccess: async ({ token }) => {
+      const url = `${window.location.origin}/r/${token}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: 'Your receipt', text: 'Your receipt from Niinas Wash', url });
+          return;
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'AbortError') return; // they closed the sheet
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success('Receipt link copied');
+      } catch {
+        toast.error(`Could not copy. The link is ${url}`);
+      }
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
 
   if (query.isPending) {
     return (
@@ -407,6 +431,9 @@ export function JobDetail() {
               Dispatch with balance
             </button>
           )}
+          <button type="button" className="btn" disabled={shareReceipt.isPending} onClick={() => shareReceipt.mutate()}>
+            {shareReceipt.isPending ? 'Making link…' : 'Share receipt'}
+          </button>
           {canTip && (
             <button type="button" className="btn" onClick={() => setDialog({ kind: 'tip' })}>
               Add tip

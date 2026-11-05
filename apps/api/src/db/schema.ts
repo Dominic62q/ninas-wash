@@ -451,6 +451,19 @@ export const expenseReceipts = pgTable(
   (t) => [index('expense_receipts_expense_idx').on(t.expenseId), check('expense_receipts_size_positive', sql`${t.size} > 0`)],
 );
 
+/** The link behind "Share receipt": one unguessable token per job, so the customer can open their receipt without signing in. */
+export const jobReceiptLinks = pgTable(
+  'job_receipt_links',
+  {
+    id: id(),
+    jobId: ref('job_id').notNull().unique().references(() => jobs.id),
+    token: text('token').notNull().unique(),
+    createdBy: ref('created_by').notNull().references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [check('job_receipt_links_token_long', sql`length(${t.token}) >= 20`)],
+);
+
 // ---- control -------------------------------------------------------------
 
 /** The end-of-day cash-up. One per day. A shortage or surplus is recorded, never hidden. */

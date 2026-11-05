@@ -283,3 +283,18 @@ export interface JobDetail {
   voided: { at: string; by: string; reason: string } | null;
   history: JobHistoryEntry[];
 }
+
+/** What a customer sees when they open the link to their receipt. No names, phone numbers or payment details. */
+export interface ReceiptDto {
+  number: string;
+  at: string;
+  plate: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'dispatched';
+  voided: boolean;
+  lines: { name: string; quantity: number; price: number }[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  paid: number;
+  balance: number;
+}
