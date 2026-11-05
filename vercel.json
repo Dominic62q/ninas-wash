@@ -7,7 +7,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "https://13-140-136-228.sslip.io/api/$1",
+      "dest": "https://api.niinaswash.com/api/$1",
       "transforms": [
         {
           "type": "request.headers",

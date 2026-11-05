@@ -60,7 +60,7 @@ The script reads `API_DOMAIN` and `ORIGIN_SECRET` from `.env`, writes `niinas.ca
 **The web app on Vercel**
 
 1. Import the GitHub repository as a new project. Leave the Root Directory as the repository root. `vercel.json` already sets the install and build commands and the output folder.
-2. In `vercel.json`, the `/api` forward points at `https://13-140-136-228.sslip.io`. Change it if your API hostname differs, and commit.
+2. In `vercel.json`, the `/api` forward points at `https://api.niinaswash.com`. Change it if your API hostname differs, and commit.
 3. Add one environment variable, `ORIGIN_SECRET`, with the same value as in `.env` on the server.
 4. Deploy. Put the resulting address (for example `https://niinas-wash.vercel.app`, or your own domain) into `WEB_ORIGIN` in `.env` on the server, then `docker compose up -d`.
 
@@ -72,7 +72,7 @@ Open the address on a phone and use "Add to Home Screen" to install it.
 - Opening a deep link such as `/jobs` or a receipt link `/r/<token>` directly shows the app, not a 404.
 - Adding a receipt photo works.
 - Three wrong passwords from your phone do not lock out a second phone (the visitor address is passed on correctly).
-- From your own computer, `curl -s -o /dev/null -w "%{http_code}" https://13-140-136-228.sslip.io/api/health` gives 403 (no secret), and the same path through the Vercel address gives 200.
+- From your own computer, `curl -s -o /dev/null -w "%{http_code}" https://api.niinaswash.com/api/health` gives 403 (no secret), and the same path through the Vercel address gives 200.
 
 **Backups**
 
