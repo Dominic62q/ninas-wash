@@ -8,7 +8,7 @@ COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
-RUN npm ci -w @niinas/api --include-workspace-root
+RUN npm ci -w @niinas/api -w @niinas/shared --include-workspace-root
 
 COPY packages/shared packages/shared
 COPY apps/api apps/api
