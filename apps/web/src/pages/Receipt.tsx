@@ -26,7 +26,9 @@ export function Receipt() {
   }, [r, printNow]);
 
   return (
-    <main className="min-h-screen bg-band px-4 py-8 print:bg-white print:py-0">
+    <main className="min-h-screen bg-band px-4 py-8 print:min-h-0 print:bg-white print:p-0">
+      {/* One A5 page, the same size as the PDF. A full-height page would spill a blank second sheet. */}
+      <style>{'@media print { @page { size: A5; margin: 12mm; } }'}</style>
       <div className="mx-auto flex w-full max-w-[420px] flex-col gap-4">
         <div className="border border-line bg-surface p-5 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card print:border-0 print:p-0 print:shadow-none">
           <p className="display text-xl text-navy">Niinas Wash</p>

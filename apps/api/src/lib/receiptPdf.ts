@@ -70,17 +70,20 @@ export function receiptPdf(r: ReceiptDto): Promise<Buffer> {
 
     rule(y);
     y += 12;
+    // A long list gets tighter rows so a normal receipt stays on one page.
+    const compact = r.lines.length > 6;
     for (const l of r.lines) {
       if (y > doc.page.height - 190) {
         doc.addPage();
         y = MARGIN;
       }
       const label = l.quantity > 1 ? `${l.name}  × ${l.quantity}` : l.name;
-      doc.font('regular').fontSize(11.5).fillColor(INK);
+      const size = compact ? 10 : 11.5;
+      doc.font('regular').fontSize(size).fillColor(INK);
       const h = doc.heightOfString(label, { width: width - 90 });
       doc.text(label, left, y, { width: width - 90 });
-      money(doc, formatGHS(l.price), right, y, 11.5, 'medium', INK);
-      y += Math.max(h, 14) + 10;
+      money(doc, formatGHS(l.price), right, y, size, 'medium', INK);
+      y += Math.max(h, size + 2) + (compact ? 5 : 10);
     }
     rule(y);
     y += 14;
