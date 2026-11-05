@@ -1,8 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { Icon } from '../components/Icon';
 import { ProfileMenu } from '../components/ProfileMenu';
 import { useAuth } from '../lib/auth';
+import { PULL_TRIGGER, usePullToRefresh } from '../lib/usePullToRefresh';
 import { NAV, meFor, moneyFor, navFor, type NavItem } from '../lib/nav';
 
 const TODAY = () => new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
@@ -63,6 +65,33 @@ function SideRail({ items }: { items: NavItem[] }) {
       </nav>
       <ProfileMenu variant="rail" />
     </aside>
+  );
+}
+
+/** The round badge that follows a pull-down on a phone, then spins while the screen's data reloads. */
+function PullIndicator({ pull, refreshing }: { pull: number; refreshing: boolean }) {
+  if (pull === 0 && !refreshing) return null;
+  const shown = refreshing ? PULL_TRIGGER * 0.75 : pull;
+  const ready = pull >= PULL_TRIGGER;
+  return (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-40 flex justify-center lg:hidden" style={{ transform: `translateY(${shown - 44}px)`, opacity: refreshing ? 1 : Math.min(1, pull / 40) }}>
+      <div className="mt-[env(safe-area-inset-top)] grid size-10 place-items-center rounded-full bg-surface text-blue-d shadow-card">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={refreshing ? 'animate-spin' : ''}
+          style={refreshing ? undefined : { transform: `rotate(${ready ? 180 : (pull / PULL_TRIGGER) * 160}deg)` }}
+        >
+          {refreshing ? <path d="M21 12a9 9 0 1 1-3-6.7" /> : <path d="M12 5v14m-6-6 6 6 6-6" />}
+        </svg>
+      </div>
+    </div>
   );
 }
 
@@ -166,6 +195,14 @@ export function Shell() {
   const sub = pathname.startsWith('/jobs/') ? { back: '/jobs', title: pathname === '/jobs/new' ? 'New job' : 'Job' } : null;
   const title = sub?.title ?? current?.label ?? (pathname === '/money' ? 'Money' : pathname === '/me' ? 'Me' : 'Niinas Wash');
   const scroller = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+  const { pull, refreshing } = usePullToRefresh(scroller, () =>
+    Promise.all([
+      queryClient.invalidateQueries(),
+      // Also look for a newer version of the app, so pulling down is how a phone picks up an update.
+      navigator.serviceWorker?.getRegistration().then((r) => r?.update()),
+    ]),
+  );
   // A new screen starts at the top, as a page would. (Back keeps the list's own filters and dates, not its scroll.)
   useEffect(() => {
     scroller.current?.scrollTo(0, 0);
@@ -177,6 +214,7 @@ export function Shell() {
     // Phone: exactly one screen tall (dvh follows the address bar), so only the page scrolls, never the whole window.
     <div className="flex min-h-screen max-lg:h-[100dvh] max-lg:min-h-0 max-lg:flex-col max-lg:overflow-hidden">
       <SideRail items={items} />
+      <PullIndicator pull={pull} refreshing={refreshing} />
       <div ref={scroller} className="app-scroll flex min-w-0 flex-1 flex-col max-lg:min-h-0 max-lg:overflow-y-auto max-lg:overscroll-y-contain">
         {/* Computer: a white bar with the page name and today's date. z-30 keeps toggles inside the page from sliding over it. */}
         <header className="sticky top-0 z-30 hidden items-center gap-4 border-b border-line bg-surface px-7 py-3.5 text-navy lg:flex">
