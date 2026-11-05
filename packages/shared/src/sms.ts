@@ -213,6 +213,10 @@ export interface SmsMessageDto {
   /** Why it did not go, in words a person can act on. */
   error: string | null;
   customer: { id: number; name: string } | null;
+  /** Whether the customer has agreed to texts now, which can differ from when this one was skipped. Null without a saved customer. */
+  customerOkToText: boolean | null;
+  /** True when the same text went out later, so this one needs no more attention. */
+  superseded: boolean;
   jobId: number | null;
   plate: string | null;
   /** Who sent it by hand. Null when it went out automatically. */

@@ -27,12 +27,18 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { newKey, plural, shortDate, shortDateTime } from '../lib/format';
 
+/**
+ * Credits are bought and billed by us, not by the client, so nothing about them is shown yet.
+ * Switch this on once billing is decided; the balance, warnings, tab and forms are all still here.
+ */
+const SHOW_CREDITS = false;
+
 const TABS = [
   { value: 'activity', label: 'Activity' },
   { value: 'wording', label: 'Wording' },
-  { value: 'credits', label: 'Credits' },
+  ...(SHOW_CREDITS ? [{ value: 'credits', label: 'Credits' } as const] : []),
 ] as const;
-type Tab = (typeof TABS)[number]['value'];
+type Tab = 'activity' | 'wording' | 'credits';
 
 const FILTERS: { value: SmsStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -64,7 +70,7 @@ function Notice({ tone, children }: { tone: 'red' | 'amber'; children: ReactNode
 /** The four headline numbers in one ruled strip: value over label on a phone, label over value on a computer. */
 function Figures({ items }: { items: { label: string; short: string; value: string; tone?: 'amber' | 'red' }[] }) {
   return (
-    <dl className="grid grid-cols-4 border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
+    <dl className="grid grid-flow-col auto-cols-fr border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
       {items.map((item, i) => (
         <div key={item.label} className={`flex min-w-0 flex-col-reverse gap-1 px-2 py-3 max-lg:items-center max-lg:text-center lg:flex-col lg:px-4 lg:py-4 ${i > 0 ? 'border-l border-line' : ''}`}>
           <dt className="text-[11px] leading-tight text-ink-3 lg:text-sm">
@@ -78,13 +84,13 @@ function Figures({ items }: { items: { label: string; short: string; value: stri
   );
 }
 
-/** "123 characters · 1 text". Over 160 characters a text costs more than one credit. */
+/** "123 characters · 1 text". Over 160 characters a text goes out in more than one part. */
 function Counter({ body }: { body: string }) {
   const segments = smsSegments(body);
   const bad = unsupportedChars(body);
   return (
     <p className={`text-xs ${bad.length ? 'font-medium text-red-d' : 'text-ink-3'}`}>
-      {bad.length ? `Not allowed: ${bad.join(' ')}. Use plain letters and symbols.` : `${body.length} characters · ${plural(segments, 'text')} (${plural(segments, 'credit')} each time)`}
+      {bad.length ? `Not allowed: ${bad.join(' ')}. Use plain letters and symbols.` : `${body.length} characters · ${plural(segments, 'text')}`}
     </p>
   );
 }
@@ -93,6 +99,9 @@ function Counter({ body }: { body: string }) {
 
 function MessageRow({ message, canResend, onResend, busy }: { message: SmsMessageDto; canResend: boolean; onResend: () => void; busy: boolean }) {
   const [open, setOpen] = useState(false);
+  // The reason a text was skipped is only true at the time: once the customer has agreed, or the same text went out later, it is history.
+  const agreedSince = message.status === 'skipped' && message.customerOkToText === true;
+  const reason = message.superseded || agreedSince ? null : message.error;
   return (
     <li className="px-4 py-4">
       <div className="flex items-center justify-between gap-3">
@@ -123,12 +132,14 @@ function MessageRow({ message, canResend, onResend, busy }: { message: SmsMessag
       >
         {message.body}
       </button>
-      {message.error && <p className="mt-2 text-xs font-medium text-red-d">{message.error}</p>}
+      {reason && <p className="mt-2 text-xs font-medium text-red-d">{reason}</p>}
+      {message.superseded && <p className="mt-2 text-xs text-ink-3">Sent again later</p>}
+      {!message.superseded && agreedSince && <p className="mt-2 text-xs text-ink-3">They have agreed to texts since</p>}
       <p className="num mt-2 text-xs text-ink-3">
         {message.customer && message.customer.name !== formatPhone(message.phone) ? `${formatPhone(message.phone)} · ` : ''}
         {message.by ? `Sent by ${message.by}` : 'Automatic'}
       </p>
-      {canResend && message.status !== 'sent' && message.customer && (
+      {canResend && message.status !== 'sent' && !message.superseded && message.customer && (
         <button type="button" className="tap -mb-2 text-sm font-medium text-blue-d" disabled={busy} onClick={onResend}>
           {busy ? 'Sending…' : 'Send again'}
         </button>
@@ -596,7 +607,7 @@ export function Texts() {
   });
   const data = overview.data;
   const creditsKnown = (data?.credits.bought ?? 0) > 0;
-  const creditsTone = data?.credits.outOfCredit ? 'red' : data && (!creditsKnown || data.credits.low) ? 'amber' : undefined;
+  const creditsTone: 'red' | 'amber' | undefined = data?.credits.outOfCredit ? 'red' : data && (!creditsKnown || data.credits.low) ? 'amber' : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
@@ -614,8 +625,8 @@ export function Texts() {
       {data && !data.gateway.configured && (
         <Notice tone="amber">Texting is not switched on yet. Texts are written down here but not sent until the Nalo details are added to the server settings.</Notice>
       )}
-      {data?.credits.outOfCredit && <Notice tone="red">Nalo says there are no credits left, so texts are failing. Top up, then record it under Credits.</Notice>}
-      {data && data.gateway.configured && !data.credits.outOfCredit && !creditsKnown && (
+      {SHOW_CREDITS && data?.credits.outOfCredit && <Notice tone="red">Nalo says there are no credits left, so texts are failing. Top up, then record it under Credits.</Notice>}
+      {SHOW_CREDITS && data && data.gateway.configured && !data.credits.outOfCredit && !creditsKnown && (
         <Notice tone="amber">
           The credit balance is not set, so there is no low-credit warning.{' '}
           {canManage ? (
@@ -627,13 +638,15 @@ export function Texts() {
           )}
         </Notice>
       )}
-      {data && data.gateway.configured && !data.credits.outOfCredit && creditsKnown && data.credits.low && (
+      {SHOW_CREDITS && data && data.gateway.configured && !data.credits.outOfCredit && creditsKnown && data.credits.low && (
         <Notice tone="amber">Credits are running low, about {Math.max(data.credits.balance, 0)} left</Notice>
       )}
 
       <Figures
         items={[
-          { label: 'Credits left', short: 'Credits', value: data ? (creditsKnown ? String(Math.max(data.credits.balance, 0)) : 'Not set') : '—', ...(creditsTone ? { tone: creditsTone } : {}) },
+          ...(SHOW_CREDITS
+            ? [{ label: 'Credits left', short: 'Credits', value: data ? (creditsKnown ? String(Math.max(data.credits.balance, 0)) : 'Not set') : '—', ...(creditsTone ? { tone: creditsTone } : {}) }]
+            : []),
           { label: 'Sent, last 30 days', short: 'Sent', value: String(data?.last30.sent ?? 0) },
           { label: 'Failed, last 30 days', short: 'Failed', value: String(data?.last30.failed ?? 0), ...((data?.last30.failed ?? 0) > 0 ? { tone: 'red' as const } : {}) },
           { label: 'Not sent, last 30 days', short: 'Not sent', value: String(data?.last30.skipped ?? 0) },
@@ -672,12 +685,12 @@ export function Texts() {
       <div role="tabpanel" id="texts-panel" aria-labelledby={`texts-tab-${tab}`}>
         {tab === 'activity' && <ActivityTab canSend={canSend} />}
         {tab === 'wording' && (data ? <WordingTab templates={data.templates} canManage={canManage} onEdit={setEditing} /> : <SkeletonRows count={3} />)}
-        {tab === 'credits' && (data ? <CreditsTab data={data} canManage={canManage} onRecord={setCredit} /> : <SkeletonRows count={3} />)}
+        {SHOW_CREDITS && tab === 'credits' && (data ? <CreditsTab data={data} canManage={canManage} onRecord={setCredit} /> : <SkeletonRows count={3} />)}
       </div>
 
       <SendPanel open={sending} onClose={() => setSending(false)} />
       <TemplatePanel key={editing?.event ?? 'none'} template={editing} onClose={() => setEditing(null)} />
-      <CreditPanel key={credit ?? 'none'} mode={credit} balance={data?.credits.balance ?? 0} onClose={() => setCredit(null)} />
+      {SHOW_CREDITS && <CreditPanel key={credit ?? 'none'} mode={credit} balance={data?.credits.balance ?? 0} onClose={() => setCredit(null)} />}
     </div>
   );
 }

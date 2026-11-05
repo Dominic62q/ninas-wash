@@ -49,7 +49,15 @@ async function templateDto(db: DbOrTx, event: AutoEvent): Promise<SmsTemplateDto
 
 const messageSelect = (db: DbOrTx) =>
   db
-    .select({ m: smsMessages, customerName: customers.name, plate: vehicles.plate, by: users.name })
+    .select({
+      m: smsMessages,
+      customerName: customers.name,
+      customerOk: customers.okToText,
+      // A failed or skipped text that was sent again later (a resend is a new text with the same words).
+      superseded: sql<boolean>`exists (select 1 from sms_messages later where later.customer_id = ${smsMessages.customerId} and later.event = ${smsMessages.event} and later.body = ${smsMessages.body} and later.status = 'sent' and later.id > ${smsMessages.id})`,
+      plate: vehicles.plate,
+      by: users.name,
+    })
     .from(smsMessages)
     .leftJoin(customers, eq(customers.id, smsMessages.customerId))
     .leftJoin(jobs, eq(jobs.id, smsMessages.jobId))
@@ -58,7 +66,7 @@ const messageSelect = (db: DbOrTx) =>
 
 type MessageRow = Awaited<ReturnType<ReturnType<typeof messageSelect>['limit']>>[number];
 
-const messageDto = ({ m, customerName, plate, by }: MessageRow): SmsMessageDto => ({
+const messageDto = ({ m, customerName, customerOk, superseded, plate, by }: MessageRow): SmsMessageDto => ({
   id: m.id,
   event: m.event,
   status: m.status,
@@ -67,6 +75,8 @@ const messageDto = ({ m, customerName, plate, by }: MessageRow): SmsMessageDto =
   segments: m.segments,
   error: m.error,
   customer: m.customerId && customerName ? { id: m.customerId, name: customerName } : null,
+  customerOkToText: m.customerId ? customerOk : null,
+  superseded: m.status !== 'sent' && !!superseded,
   jobId: m.jobId,
   plate,
   by,
