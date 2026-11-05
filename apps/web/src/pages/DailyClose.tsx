@@ -148,6 +148,24 @@ function NoteCounter({ onTotal }: { onTotal: (cedis: number) => void }) {
   );
 }
 
+/** A small "i" that opens its explanation underneath when tapped, so the labels can stay short. */
+function InfoButton({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-expanded={open}
+      onClick={onToggle}
+      className={`-m-1.5 grid size-9 flex-none cursor-pointer place-items-center rounded-full transition-colors ${open ? 'text-blue-d' : 'text-ink-3 hover:text-ink-2'}`}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v5M12 8h.01" />
+      </svg>
+    </button>
+  );
+}
+
 /** Count the drawer and close the day. For a manager the sums are on top of the form, for a cashier only the form. */
 function CloseForm({ summary }: { summary: DaySummary }) {
   const queryClient = useQueryClient();
@@ -158,6 +176,8 @@ function CloseForm({ summary }: { summary: DaySummary }) {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [tip, setTip] = useState<'start' | 'count' | null>(null);
+  const toggleTip = (t: 'start' | 'count') => setTip((cur) => (cur === t ? null : t));
 
   const float = parseGHS(floatText);
   const counted = parseGHS(countText);
@@ -180,7 +200,7 @@ function CloseForm({ summary }: { summary: DaySummary }) {
   });
 
   function review() {
-    if (float === null) return setError('Enter the float at the start. Use 0 if there was none.');
+    if (float === null) return setError('Enter the cash that was in the drawer at the start. Use 0 if it was empty.');
     if (counted === null) return setError('Enter the cash you counted, like 250 or 250.50');
     const parsed = closeInput.safeParse({ day: summary.day, openingFloat: float, countedCash: counted, note });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Check the details');
@@ -197,13 +217,28 @@ function CloseForm({ summary }: { summary: DaySummary }) {
       {summary.cash && <Breakdown cash={summary.cash} />}
       <div className="flex flex-col gap-3 border-t border-line p-4 first:border-t-0">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Float at start (GH₵)">
-            <input className="input" inputMode="decimal" value={floatText} onChange={(e) => { setFloatText(e.target.value); setError(null); }} autoComplete="off" placeholder="0.00" />
-          </Field>
-          <Field label="Cash counted (GH₵)">
-            <input className="input" inputMode="decimal" value={countText} onChange={(e) => { setCountText(e.target.value); setError(null); }} autoComplete="off" placeholder="0.00" />
-          </Field>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex h-5 items-center justify-between gap-1">
+              <label htmlFor="float-start" className="text-[13px] font-bold text-ink-2">Cash at start (GH₵)</label>
+              <InfoButton label="What is cash at start?" open={tip === 'start'} onToggle={() => toggleTip('start')} />
+            </div>
+            <input id="float-start" className="input" inputMode="decimal" value={floatText} onChange={(e) => { setFloatText(e.target.value); setError(null); }} autoComplete="off" placeholder="0.00" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex h-5 items-center justify-between gap-1">
+              <label htmlFor="float-count" className="text-[13px] font-bold text-ink-2">Cash counted (GH₵)</label>
+              <InfoButton label="What is cash counted?" open={tip === 'count'} onToggle={() => toggleTip('count')} />
+            </div>
+            <input id="float-count" className="input" inputMode="decimal" value={countText} onChange={(e) => { setCountText(e.target.value); setError(null); }} autoComplete="off" placeholder="0.00" />
+          </div>
         </div>
+        {tip && (
+          <p role="note" className="bg-band px-3 py-2.5 text-sm text-ink-2 max-lg:rounded-[10px]">
+            {tip === 'start'
+              ? `The cash that was in the drawer when the day began, like change. ${summary.suggestedFloat !== null ? 'It is filled in from the last close, so change it only if you started with a different amount. ' : ''}Use 0 if it was empty.`
+              : 'Count all the cash in the drawer right now, notes and coins. Do not count MoMo.'}
+          </p>
+        )}
         <NoteCounter
           onTotal={(cedis) => {
             setCountText(cedis.toFixed(2));
@@ -250,7 +285,7 @@ function ClosedResult({ close, summary }: { close: DailyCloseRow; summary: DaySu
       </div>
       <div className="py-1">
         {summary.cash && <Breakdown cash={summary.cash} />}
-        <Line label="Float at start" amount={close.openingFloat} />
+        <Line label="Cash at start" amount={close.openingFloat} />
         <Line label="Should hold" amount={close.expectedCash} />
         <Line label="Counted" amount={close.countedCash} strong />
       </div>
