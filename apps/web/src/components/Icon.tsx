@@ -12,6 +12,7 @@ const PATHS: Record<IconName, string> = {
   chat: 'M4.5 5.5h15v10.5H10l-4.5 3.5V16h-1V5.5ZM8.5 10.8h.01M12 10.8h.01M15.5 10.8h.01',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   history: 'M4 12a8 8 0 1 0 2.5-5.8M4 5v4h4M12 8v4l2.5 1.5',
+  settings: 'M4 7h9m4 0h3M4 17h3m4 0h9M15 5v4m-6 6v4',
   staff: 'M12 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm-7 8c.6-3.2 3.4-5 7-5s6.4 1.8 7 5',
 };
 

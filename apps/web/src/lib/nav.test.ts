@@ -35,7 +35,7 @@ describe('menu by role', () => {
       const tabs = items.filter((i) => i.path === '/' || i.path === '/jobs').map((i) => i.label);
       const money = moneyFor(items).map((i) => i.label);
       const me = meFor(items).map((i) => i.label);
-      const finished = items.filter((i) => i.phase <= BUILT_PHASE).map((i) => i.label);
+      const finished = items.filter((i) => i.phase <= BUILT_PHASE && !i.inSettings).map((i) => i.label);
       expect([...tabs, ...money, ...me].sort()).toEqual(finished.sort());
     }
     expect(moneyFor(navFor(canAs('cashier'))).map((i) => i.label)).toEqual(['Expenses', 'Tips', 'Daily close']);

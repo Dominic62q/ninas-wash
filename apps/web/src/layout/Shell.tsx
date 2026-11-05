@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon';
 import { ProfileMenu } from '../components/ProfileMenu';
 import { useAuth } from '../lib/auth';
 import { PULL_TRIGGER, usePullToRefresh } from '../lib/usePullToRefresh';
-import { NAV, meFor, moneyFor, navFor, type NavItem } from '../lib/nav';
+import { NAV, meFor, moneyFor, navFor, railFor, settingsFor, type NavItem } from '../lib/nav';
 
 const TODAY = () => new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 
@@ -123,7 +123,7 @@ function TabBar({ items }: { items: NavItem[] }) {
   const hasHome = items.some((i) => i.path === '/');
   const hasJobs = items.some((i) => i.path === '/jobs');
   const money = moneyFor(items);
-  const meActive = pathname === '/me' || meFor(items).some((i) => pathname.startsWith(i.path));
+  const meActive = pathname === '/me' || [...meFor(items), ...settingsFor(items)].some((i) => pathname.startsWith(i.path));
   const moneyActive = pathname === '/money' || money.some((i) => pathname.startsWith(i.path));
   const jobsActive = pathname.startsWith('/jobs') && pathname !== '/jobs/new';
   const tab = (active: boolean) =>
@@ -191,6 +191,8 @@ export function Shell() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const current = NAV.find((i) => (i.path === '/' ? pathname === '/' : pathname.startsWith(i.path)));
+  /** A screen inside Settings gets a back arrow to Settings. */
+  const up = current?.inSettings ? { back: '/settings', label: 'Back to settings' } : null;
   /** Pages opened from the board get a back arrow in the header instead of a link of their own. */
   const sub = pathname.startsWith('/jobs/') ? { back: '/jobs', title: pathname === '/jobs/new' ? 'New job' : 'Job' } : null;
   const title = sub?.title ?? current?.label ?? (pathname === '/money' ? 'Money' : pathname === '/me' ? 'Me' : 'Niinas Wash');
@@ -208,18 +210,18 @@ export function Shell() {
     scroller.current?.scrollTo(0, 0);
     window.scrollTo(0, 0);
   }, [pathname]);
-  const goBack = () => (window.history.state?.idx > 0 ? navigate(-1) : navigate(sub?.back ?? '/')); // keeps the list's dates and filters
+  const goBack = () => (window.history.state?.idx > 0 ? navigate(-1) : navigate((sub ?? up)?.back ?? '/')); // keeps the list's dates and filters
 
   return (
     // Phone: exactly one screen tall (dvh follows the address bar), so only the page scrolls, never the whole window.
     <div className="flex min-h-screen max-lg:h-[100dvh] max-lg:min-h-0 max-lg:flex-col max-lg:overflow-hidden">
-      <SideRail items={items} />
+      <SideRail items={railFor(items)} />
       <PullIndicator pull={pull} refreshing={refreshing} />
       <div ref={scroller} className="app-scroll flex min-w-0 flex-1 flex-col max-lg:min-h-0 max-lg:overflow-y-auto max-lg:overscroll-y-contain">
         {/* Computer: a white bar with the page name and today's date. z-30 keeps toggles inside the page from sliding over it. */}
         <header className="sticky top-0 z-30 hidden items-center gap-4 border-b border-line bg-surface px-7 py-3.5 text-navy lg:flex">
-          {sub && (
-            <button type="button" aria-label="Back to jobs" onClick={goBack} className="tap -ml-3 grid h-11 w-11 place-items-center px-0 text-2xl leading-none text-blue-d">
+          {(sub || up) && (
+            <button type="button" aria-label={up?.label ?? 'Back to jobs'} onClick={goBack} className="tap -ml-3 grid h-11 w-11 place-items-center px-0 text-2xl leading-none text-blue-d">
               ←
             </button>
           )}
@@ -232,10 +234,10 @@ export function Shell() {
         {/* Phone: the page name on the grey ground. Home draws its own greeting instead. */}
         {pathname !== '/' && (
           <div className="flex items-center gap-3 px-4 pb-1 pt-[max(1.25rem,env(safe-area-inset-top))] lg:hidden">
-            {sub && (
+            {(sub || up) && (
               <button
                 type="button"
-                aria-label="Back to jobs"
+                aria-label={up?.label ?? 'Back to jobs'}
                 onClick={goBack}
                 className="grid h-11 w-11 flex-none cursor-pointer place-items-center rounded-xl bg-surface text-navy shadow-card active:scale-95"
               >

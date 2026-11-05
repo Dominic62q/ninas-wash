@@ -22,6 +22,7 @@ import { NewJob } from './pages/NewJob';
 import { Reports } from './pages/Reports';
 import { Roles } from './pages/Roles';
 import { Services } from './pages/Services';
+import { Settings } from './pages/Settings';
 import { Texts } from './pages/Texts';
 import { SignIn } from './pages/SignIn';
 import { Staff } from './pages/Staff';
@@ -52,6 +53,7 @@ const SCREENS: Record<string, ReactNode> = {
   '/sms': <Texts />,
   '/activity': <ActivityLog />,
   '/roles': <Roles />,
+  '/settings': <Settings />,
 };
 
 /** A page that needs a permission. Without it, the person lands on the dashboard instead. */
