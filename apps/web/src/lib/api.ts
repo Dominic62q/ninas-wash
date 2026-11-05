@@ -18,6 +18,18 @@ interface Options {
   body?: unknown;
 }
 
+/** Fetch a file the server makes, like a receipt PDF. */
+export async function apiFile(path: string): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, { credentials: 'same-origin' });
+  } catch {
+    throw new ApiError(0, 'offline', 'Cannot reach the server. Check the internet connection and try again.');
+  }
+  if (!res.ok) throw new ApiError(res.status, 'error', 'The receipt could not be made. Try again.');
+  return res.blob();
+}
+
 /** Send a file as the request body, like a receipt photo. */
 export async function apiUpload<T>(path: string, file: Blob): Promise<T> {
   let res: Response;

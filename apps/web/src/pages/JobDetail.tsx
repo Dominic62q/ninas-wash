@@ -24,6 +24,7 @@ import { useToast } from '../components/Toast';
 import { Field, FormError, Panel, Pill, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { sendReceipt, wantsPrint } from '../lib/receiptShare';
 import { plural, shortDateTime } from '../lib/format';
 
 const CAR_LABEL: Record<(typeof CAR_TYPES)[number], string> = { saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup', van: 'Van', other: 'Other' };
@@ -311,25 +312,22 @@ export function JobDetail() {
   const steps = useJobSteps();
   const toast = useToast();
 
-  /** The customer's receipt is a link. The phone's own share sheet sends it; otherwise it is copied. */
+  /** On a phone the receipt goes out as a PDF through the share sheet. On a computer it opens the print dialog. */
   const shareReceipt = useMutation({
-    mutationFn: () => api<{ token: string }>(`/receipts/for-job/${id}`, { method: 'POST' }),
-    onSuccess: async ({ token }) => {
-      const url = `${window.location.origin}/r/${token}`;
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: 'Your receipt', text: 'Your receipt from Niinas Wash', url });
-          return;
-        } catch (e) {
-          if (e instanceof DOMException && e.name === 'AbortError') return; // they closed the sheet
-        }
-      }
+    mutationFn: async () => {
+      // A computer's print window has to be opened now, while the tap still counts, before we wait for the server.
+      const printWindow = wantsPrint() ? window.open('', '_blank') : null;
       try {
-        await navigator.clipboard.writeText(url);
-        toast.success('Receipt link copied');
-      } catch {
-        toast.error(`Could not copy. The link is ${url}`);
+        const { token } = await api<{ token: string }>(`/receipts/for-job/${id}`, { method: 'POST' });
+        return await sendReceipt(token, `Receipt ${job?.number ?? id}.pdf`, printWindow);
+      } catch (e) {
+        printWindow?.close();
+        throw e;
       }
+    },
+    onSuccess: (outcome) => {
+      if (outcome === 'link') toast.success('Pop-ups are blocked, so the receipt link was copied instead');
+      if (outcome === 'downloaded') toast.success('Receipt saved as a PDF');
     },
     onError: (e) => toast.error(errorMessage(e)),
   });
@@ -432,7 +430,7 @@ export function JobDetail() {
             </button>
           )}
           <button type="button" className="btn" disabled={shareReceipt.isPending} onClick={() => shareReceipt.mutate()}>
-            {shareReceipt.isPending ? 'Making link…' : 'Share receipt'}
+            {shareReceipt.isPending ? 'Preparing…' : wantsPrint() ? 'Print receipt' : 'Share receipt'}
           </button>
           {canTip && (
             <button type="button" className="btn" onClick={() => setDialog({ kind: 'tip' })}>

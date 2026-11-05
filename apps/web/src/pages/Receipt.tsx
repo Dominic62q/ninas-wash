@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import { formatGHS, type ReceiptDto } from '@niinas/shared';
 import { Plate } from '../components/Plate';
 import { api, ApiError } from '../lib/api';
@@ -8,12 +9,21 @@ import { shortDateTime } from '../lib/format';
 /** The page a customer opens from the link they were sent. No sign-in, and nothing on it but the bill. */
 export function Receipt() {
   const { token = '' } = useParams();
+  const [params] = useSearchParams();
   const query = useQuery({
     queryKey: ['receipt', token],
     queryFn: () => api<{ receipt: ReceiptDto }>(`/receipts/${encodeURIComponent(token)}`),
     retry: (count, error) => !(error instanceof ApiError && error.status < 500 && error.status !== 0) && count < 2,
   });
   const r = query.data?.receipt;
+
+  // Opened from "Share receipt" on a computer: the print dialog is what was asked for.
+  const printNow = params.get('print') === '1';
+  useEffect(() => {
+    if (!r || !printNow) return;
+    const timer = window.setTimeout(() => window.print(), 400);
+    return () => window.clearTimeout(timer);
+  }, [r, printNow]);
 
   return (
     <main className="min-h-screen bg-band px-4 py-8 print:bg-white print:py-0">
@@ -84,9 +94,14 @@ export function Receipt() {
           )}
         </div>
         {r && (
-          <button type="button" className="btn print:hidden" onClick={() => window.print()}>
-            Print or save as PDF
-          </button>
+          <div className="flex flex-col gap-2 print:hidden">
+            <a className="btn btn-primary" href={`/api/receipts/${encodeURIComponent(token)}/pdf`} download={`Receipt ${r.number}.pdf`}>
+              Download PDF
+            </a>
+            <button type="button" className="btn" onClick={() => window.print()}>
+              Print
+            </button>
+          </div>
         )}
       </div>
     </main>

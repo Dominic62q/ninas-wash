@@ -105,6 +105,19 @@ describe('sharing a receipt', () => {
     expect(text).not.toMatch(/cash|momo|reference|phone/i);
   });
 
+  it('gives the same bill as a PDF file, with no sign-in', async () => {
+    const job = await bookedJob({ discount: 1000 });
+    const token = (await call(cashier, 'POST', `/api/receipts/for-job/${job.id}`)).json().token as string;
+    const res = await call(null, 'GET', `/api/receipts/${token}/pdf`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain('inline; filename="Receipt J-');
+    expect(res.headers['x-robots-tag']).toContain('noindex');
+    expect(res.rawPayload.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(res.rawPayload.length).toBeGreaterThan(1500);
+    expect((await call(null, 'GET', '/api/receipts/not-a-real-token-at-all-0000/pdf')).statusCode).toBe(404);
+  });
+
   it('gives the same answer for a wrong token as for a made-up one', async () => {
     expect((await call(null, 'GET', '/api/receipts/not-a-real-token-at-all-0000')).statusCode).toBe(404);
     expect((await call(null, 'GET', '/api/receipts/short')).statusCode).toBe(400);

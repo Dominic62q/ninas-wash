@@ -6,6 +6,7 @@ import type { ReceiptDto } from '@niinas/shared';
 import { jobReceiptLinks } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
 import { notFound } from '../lib/errors.js';
+import { receiptPdf } from '../lib/receiptPdf.js';
 import { idParams } from '../lib/params.js';
 import { loadJob } from './jobs.js';
 
@@ -41,15 +42,16 @@ export const receiptRoutes: FastifyPluginAsync = async (app) => {
     return { token };
   });
 
-  app.get('/:token', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const { token } = tokenParams.parse(req.params);
+  const limit = { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } };
+
+  /** The bill behind a link. The same answer for a wrong token as for no token: nothing to learn by trying. */
+  const receiptFor = async (rawToken: unknown): Promise<ReceiptDto> => {
+    const { token } = tokenParams.parse(rawToken);
     const [link] = await app.db.select({ jobId: jobReceiptLinks.jobId }).from(jobReceiptLinks).where(eq(jobReceiptLinks.token, token));
-    // The same answer for a wrong token as for no token: nothing to learn by trying.
     if (!link) throw notFound('That receipt');
     const job = await loadJob(app.db, link.jobId);
     if (!job) throw notFound('That receipt');
-    reply.header('x-robots-tag', 'noindex, nofollow');
-    const receipt: ReceiptDto = {
+    return {
       number: job.number,
       at: job.createdAt,
       plate: job.vehicle.plate,
@@ -62,6 +64,22 @@ export const receiptRoutes: FastifyPluginAsync = async (app) => {
       paid: job.paid,
       balance: job.balance,
     };
+  };
+
+  app.get('/:token', limit, async (req, reply) => {
+    const receipt = await receiptFor(req.params);
+    reply.header('x-robots-tag', 'noindex, nofollow');
     return { receipt };
+  });
+
+  // The same bill as a PDF, for sharing as a file.
+  app.get('/:token/pdf', limit, async (req, reply) => {
+    const receipt = await receiptFor(req.params);
+    const pdf = await receiptPdf(receipt);
+    return reply
+      .header('x-robots-tag', 'noindex, nofollow')
+      .header('content-disposition', `inline; filename="Receipt ${receipt.number}.pdf"`)
+      .type('application/pdf')
+      .send(pdf);
   });
 };
