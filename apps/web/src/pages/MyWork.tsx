@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatGHS, type CommissionLedger } from '@niinas/shared';
-import { EmptyRow, FormError, SkeletonRows, errorMessage } from '../components/ui';
+import { EmptyRow, FormError, PAGE, ShowMore, SkeletonRows, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { LedgerRow } from './Commissions';
@@ -8,10 +9,12 @@ import { LedgerRow } from './Commissions';
 /** An attendant's own screen: what they are owed, and the washes and payouts behind it. Nothing about anyone else. */
 export function MyWork() {
   const { user } = useAuth();
+  const [limit, setLimit] = useState(PAGE);
   const query = useQuery({
-    queryKey: ['commissions', 'mine'],
-    queryFn: () => api<{ ledger: CommissionLedger | null }>('/commissions/mine'),
+    queryKey: ['commissions', 'mine', limit],
+    queryFn: () => api<{ ledger: CommissionLedger | null }>(`/commissions/mine?limit=${limit}`),
     refetchInterval: 60_000,
+    placeholderData: (previous) => previous,
   });
   const ledger = query.data?.ledger;
 
@@ -51,6 +54,7 @@ export function MyWork() {
                 ))}
               </ul>
             )}
+            <ShowMore shown={ledger.entries.length} total={ledger.total} busy={query.isFetching} onMore={() => setLimit((n) => n + PAGE)} />
           </section>
         </>
       )}

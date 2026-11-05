@@ -191,6 +191,21 @@ export function TakingsCard({ takings, label = 'Taken' }: { takings: Takings; la
   );
 }
 
+/** How many rows a long list shows at first, and adds each time "Show more" is pressed. */
+export const PAGE = 30;
+
+/** Sits under a list that is cut short. Loads the next page; the list refetches with a bigger limit. */
+export function ShowMore({ shown, total, busy, onMore }: { shown: number; total: number; busy: boolean; onMore: () => void }) {
+  if (shown >= total) return null;
+  return (
+    <div className="border-t border-line-2 px-4 py-3 text-center">
+      <button type="button" className="inline-flex h-[44px] items-center px-3 font-medium text-blue-d" disabled={busy} onClick={onMore}>
+        {busy ? 'Loading' : `Show more (${shown} of ${total})`}
+      </button>
+    </div>
+  );
+}
+
 export function EmptyRow({ children }: { children: ReactNode }) {
   return <p className="px-4 py-8 text-center text-ink-3">{children}</p>;
 }

@@ -232,6 +232,8 @@ export interface CommissionLedger {
   paidOut: number;
   /** Newest first. */
   entries: LedgerEntry[];
+  /** How many lines the ledger has in all. `entries` may hold fewer. */
+  total: number;
 }
 
 export interface TipDto {

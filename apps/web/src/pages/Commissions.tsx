@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { formatGHS, parseGHS, payoutInput, reasonInput, type CommissionLedger, type CommissionOverview, type LedgerEntry, type PayMethodDto } from '@niinas/shared';
 import { useToast } from '../components/Toast';
-import { EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, errorMessage } from '../components/ui';
+import { EmptyRow, Field, FormError, PAGE, Panel, Pill, ShowMore, SkeletonRows, errorMessage } from '../components/ui';
 import { MethodPicker } from '../components/PaymentBits';
 import { api } from '../lib/api';
 import { useActiveMethods } from '../lib/useMethods';
@@ -165,10 +165,12 @@ export function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid?: (p: 
 function LedgerPanel({ attendantId, onClose }: { attendantId: number | null; onClose: () => void }) {
   const [paying, setPaying] = useState(false);
   const [voiding, setVoiding] = useState<Payout | null>(null);
+  const [limit, setLimit] = useState(PAGE);
   const ledger = useQuery({
-    queryKey: ['commissions', 'ledger', attendantId],
-    queryFn: () => api<{ ledger: CommissionLedger }>(`/commissions/attendants/${attendantId}`),
+    queryKey: ['commissions', 'ledger', attendantId, limit],
+    queryFn: () => api<{ ledger: CommissionLedger }>(`/commissions/attendants/${attendantId}?limit=${limit}`),
     enabled: attendantId !== null,
+    placeholderData: (previous) => previous,
   });
   const data = ledger.data?.ledger;
 
@@ -204,6 +206,7 @@ function LedgerPanel({ attendantId, onClose }: { attendantId: number | null; onC
                 ))}
               </ul>
             )}
+            <ShowMore shown={data.entries.length} total={data.total} busy={ledger.isFetching} onMore={() => setLimit((n) => n + PAGE)} />
           </div>
           <PayOutPanel key={`pay-${paying}-${data.owed}`} ledger={paying ? data : null} onClose={() => setPaying(false)} />
           <VoidPayoutPanel key={`void-${voiding?.id ?? 'none'}`} payout={voiding} attendantName={data.attendant.name} onClose={() => setVoiding(null)} />

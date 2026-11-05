@@ -5,7 +5,7 @@ import { formatGHS, reasonInput, type JobListResult, type TipDto, type TipsOverv
 import { useAttendants } from '../components/JobBits';
 import { TipPanel } from '../components/TipPanel';
 import { useToast } from '../components/Toast';
-import { ConfirmPanel, EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, errorMessage } from '../components/ui';
+import { ConfirmPanel, EmptyRow, Field, FormError, PAGE, Panel, Pill, ShowMore, SkeletonRows, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { addDays, clock, dayName, plural, ymd } from '../lib/format';
@@ -64,8 +64,14 @@ export function Tips() {
   const [adding, setAdding] = useState(false);
   const [handing, setHanding] = useState<{ attendantId: number; name: string; amount: number } | null>(null);
   const [voiding, setVoiding] = useState<TipDto | null>(null);
+  const [limit, setLimit] = useState(PAGE);
 
-  const tips = useQuery({ queryKey: ['tips'], queryFn: () => api<TipsOverview>('/tips'), refetchInterval: 30_000 });
+  const tips = useQuery({
+    queryKey: ['tips', limit],
+    queryFn: () => api<TipsOverview>(`/tips?limit=${limit}`),
+    refetchInterval: 30_000,
+    placeholderData: (previous) => previous,
+  });
   const attendants = useAttendants();
   const cars = useQuery({
     queryKey: ['jobs', 'recent-for-tips'],
@@ -185,7 +191,7 @@ export function Tips() {
         ) : (
           <EmptyRow>No tips in the last 7 days</EmptyRow>
         )}
-        {data && data.total > data.tips.length && <p className="border-t border-line px-4 py-2.5 text-xs text-ink-3">Showing the latest {data.tips.length} of {data.total}.</p>}
+        {data && <ShowMore shown={data.tips.length} total={data.total} busy={tips.isFetching} onMore={() => setLimit((n) => n + PAGE)} />}
       </section>
 
       <TipPanel open={adding} onClose={() => setAdding(false)} attendants={attendants.data?.attendants ?? []} jobOptions={jobOptions} />

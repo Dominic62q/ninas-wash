@@ -15,7 +15,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const listQuery = z.object({
   from: day.optional(),
   to: day.optional(),
-  limit: z.coerce.number().int().min(1).max(300).default(150),
+  limit: z.coerce.number().int().min(1).max(1000).default(50),
 });
 
 const voider = alias(users, 'voider');
@@ -91,6 +91,7 @@ export const expenseRoutes: FastifyPluginAsync = async (app) => {
       .from(expenses)
       .innerJoin(paymentMethods, eq(paymentMethods.id, expenses.methodId))
       .where(and(inRange, isNull(expenses.voidedAt)));
+    const [{ n: total } = { n: 0 }] = await app.db.select({ n: sql<number>`count(*)::int` }).from(expenses).where(inRange);
     const closed = await app.db
       .select({ day: dailyCloses.day })
       .from(dailyCloses)
@@ -100,6 +101,7 @@ export const expenseRoutes: FastifyPluginAsync = async (app) => {
       from,
       to,
       expenses: list,
+      total,
       sum: totals?.sum ?? 0,
       drawerSum: totals?.drawer ?? 0,
       otherSum: totals?.other ?? 0,

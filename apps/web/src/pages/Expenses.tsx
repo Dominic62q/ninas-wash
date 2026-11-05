@@ -5,7 +5,7 @@ import { Select } from '../components/Dropdown';
 import { MethodPicker } from '../components/PaymentBits';
 import { PhotoButton, ReceiptPanel, photoProblem } from '../components/ReceiptPhotos';
 import { useToast } from '../components/Toast';
-import { EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, Strip, errorMessage } from '../components/ui';
+import { EmptyRow, Field, FormError, PAGE, Panel, Pill, ShowMore, SkeletonRows, Strip, errorMessage } from '../components/ui';
 import { api, apiUpload } from '../lib/api';
 import { shrinkPhoto } from '../lib/image';
 import { useActiveCategories } from '../lib/useCategories';
@@ -213,13 +213,14 @@ export function Expenses() {
   const [adding, setAdding] = useState(false);
   const [voiding, setVoiding] = useState<ExpenseDto | null>(null);
   const [receiptFor, setReceiptFor] = useState<number | null>(null);
+  const [limit, setLimit] = useState(PAGE);
 
   const days = RANGES.find((r) => r.value === range)!.days;
   const to = ymd(new Date());
   const from = ymd(addDays(new Date(), -days));
   const query = useQuery({
-    queryKey: ['expenses', from, to],
-    queryFn: () => api<ExpensesOverview>(`/expenses?from=${from}&to=${to}&limit=300`),
+    queryKey: ['expenses', from, to, limit],
+    queryFn: () => api<ExpensesOverview>(`/expenses?from=${from}&to=${to}&limit=${limit}`),
     refetchInterval: 30_000,
     placeholderData: (previous) => previous,
   });
@@ -236,7 +237,10 @@ export function Expenses() {
               type="button"
               role="radio"
               aria-checked={range === r.value}
-              onClick={() => setRange(r.value)}
+              onClick={() => {
+                setRange(r.value);
+                setLimit(PAGE);
+              }}
               className={`btn h-9 shrink-0 px-3 text-sm ${range === r.value ? 'border-blue bg-blue-50 text-blue-d' : ''}`}
             >
               {r.label}
@@ -284,8 +288,9 @@ export function Expenses() {
         ) : (
           <EmptyRow>{range === 'today' ? 'No expenses today' : 'No expenses in this period'}</EmptyRow>
         )}
+        {data && <ShowMore shown={data.expenses.length} total={data.total} busy={query.isFetching} onMore={() => setLimit((n) => n + PAGE)} />}
       </section>
-      {data && data.expenses.length > 0 && <p className="text-center text-xs text-ink-3">{plural(data.expenses.length, 'expense')}. Voided ones are not counted above.</p>}
+      {data && data.expenses.length > 0 && <p className="text-center text-xs text-ink-3">{plural(data.total, 'expense')}. Voided ones are not counted above.</p>}
 
       <AddExpensePanel open={adding} onClose={() => setAdding(false)} closedDays={closedDays} />
       <ReceiptPanel expense={data?.expenses.find((e) => e.id === receiptFor) ?? null} onClose={() => setReceiptFor(null)} />

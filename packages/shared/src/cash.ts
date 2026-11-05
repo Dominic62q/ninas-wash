@@ -102,6 +102,8 @@ export interface ExpensesOverview {
   from: string;
   to: string;
   expenses: ExpenseDto[];
+  /** How many there are in the dates, voided ones too. The list above may hold fewer. */
+  total: number;
   /** Voided ones left out. */
   sum: number;
   /** Spent through the cash drawer. */
@@ -161,5 +163,8 @@ export interface DaySummary {
 }
 
 export interface DailyCloseHistory {
+  /** Newest first. */
   closes: DailyCloseRow[];
+  /** How many days have been closed, reopened ones too. `closes` may hold fewer. */
+  total: number;
 }

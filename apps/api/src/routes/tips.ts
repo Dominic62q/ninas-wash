@@ -12,7 +12,7 @@ import { idParams } from '../lib/params.js';
 
 const listQuery = z.object({
   days: z.coerce.number().int().min(1).max(90).default(7),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(1000).default(30),
 });
 
 const voider = alias(users, 'voider');

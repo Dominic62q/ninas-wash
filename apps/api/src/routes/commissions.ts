@@ -1,5 +1,6 @@
 import { desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
 import { formatGHS, payoutInput, reasonInput, type CommissionLedger, type CommissionOverview, type LedgerEntry } from '@niinas/shared';
 import type { DbOrTx } from '../db/client.js';
 import { attendants, commissionPayouts, commissions, jobLineAttendants, jobLines, jobs, paymentMethods, services, users, vehicles } from '../db/schema.js';
@@ -10,7 +11,8 @@ import { HttpError, conflict, notFound } from '../lib/errors.js';
 import { activeMethod } from '../lib/methods.js';
 import { idParams } from '../lib/params.js';
 
-const LEDGER_LIMIT = 200;
+const PAGE = 30;
+const pageQuery = z.object({ limit: z.coerce.number().int().min(1).max(1000).default(PAGE) });
 
 const earnedOf = sql<number>`coalesce((
   select sum(c.amount) from commissions c join job_line_attendants jla on jla.id = c.line_attendant_id
@@ -21,7 +23,8 @@ const earned7dOf = sql<number>`coalesce((
 const paidOutOf = sql<number>`coalesce((
   select sum(p.amount) from commission_payouts p where p.attendant_id = "attendants"."id" and p.voided_at is null), 0)::int`;
 
-export async function ledgerFor(db: DbOrTx, attendantId: number): Promise<CommissionLedger | null> {
+/** The newest `limit` lines of what an attendant earned and was paid, with how many there are in all. */
+export async function ledgerFor(db: DbOrTx, attendantId: number, limit = PAGE): Promise<CommissionLedger | null> {
   const [attendant] = await db.select().from(attendants).where(eq(attendants.id, attendantId));
   if (!attendant) return null;
   const { earned, paidOut, owed } = await balanceOf(db, attendantId);
@@ -45,7 +48,7 @@ export async function ledgerFor(db: DbOrTx, attendantId: number): Promise<Commis
     .innerJoin(services, eq(services.id, jobLines.serviceId))
     .where(eq(jobLineAttendants.attendantId, attendantId))
     .orderBy(desc(commissions.id))
-    .limit(LEDGER_LIMIT);
+    .limit(limit);
 
   const payoutRows = await db
     .select({ p: commissionPayouts, by: users.name, method: paymentMethods.name })
@@ -54,7 +57,7 @@ export async function ledgerFor(db: DbOrTx, attendantId: number): Promise<Commis
     .innerJoin(paymentMethods, eq(paymentMethods.id, commissionPayouts.methodId))
     .where(eq(commissionPayouts.attendantId, attendantId))
     .orderBy(desc(commissionPayouts.id))
-    .limit(LEDGER_LIMIT);
+    .limit(limit);
   const voiderIds = [...new Set(payoutRows.flatMap((r) => (r.p.voidedBy ? [r.p.voidedBy] : [])))];
   const voiders = voiderIds.length ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, voiderIds)) : [];
   const nameOf = new Map(voiders.map((u) => [u.id, u.name]));
@@ -86,9 +89,22 @@ export async function ledgerFor(db: DbOrTx, attendantId: number): Promise<Commis
         voided: p.voidedAt ? { at: p.voidedAt.toISOString(), by: nameOf.get(p.voidedBy!) ?? 'Someone', reason: p.voidReason ?? '' } : null,
       }),
     ),
-  ].sort((a, b) => b.at.localeCompare(a.at));
+  ]
+    .sort((a, b) => b.at.localeCompare(a.at))
+    // Each side was cut at `limit`, so the newest `limit` of the two together are all in here.
+    .slice(0, limit);
 
-  return { attendant: { id: attendant.id, name: attendant.name, active: attendant.active }, owed, earned, paidOut, entries };
+  const [{ n: earnedCount } = { n: 0 }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(commissions)
+    .innerJoin(jobLineAttendants, eq(jobLineAttendants.id, commissions.lineAttendantId))
+    .where(eq(jobLineAttendants.attendantId, attendantId));
+  const [{ n: payoutCount } = { n: 0 }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(commissionPayouts)
+    .where(eq(commissionPayouts.attendantId, attendantId));
+
+  return { attendant: { id: attendant.id, name: attendant.name, active: attendant.active }, owed, earned, paidOut, entries, total: earnedCount + payoutCount };
 }
 
 /** What each attendant has earned and is owed. Payouts happen here. Managers and owners only. */
@@ -109,14 +125,16 @@ export const commissionRoutes: FastifyPluginAsync = async (app) => {
 
   // An attendant who signs in sees their own ledger, and only theirs.
   app.get('/mine', { preHandler: app.requirePermission('self.view') }, async (req) => {
+    const { limit } = pageQuery.parse(req.query);
     const attendantId = req.user!.attendantId;
     if (attendantId === null) return { ledger: null };
-    return { ledger: await ledgerFor(app.db, attendantId) };
+    return { ledger: await ledgerFor(app.db, attendantId, limit) };
   });
 
   app.get('/attendants/:id', view, async (req) => {
     const { id } = idParams.parse(req.params);
-    const ledger = await ledgerFor(app.db, id);
+    const { limit } = pageQuery.parse(req.query);
+    const ledger = await ledgerFor(app.db, id, limit);
     if (!ledger) throw notFound('That attendant');
     return { ledger };
   });

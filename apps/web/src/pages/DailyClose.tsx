@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router';
 import { closeInput, formatGHS, parseGHS, reasonInput, type DailyCloseHistory, type DailyCloseRow, type DaySummary } from '@niinas/shared';
 import { Select } from '../components/Dropdown';
 import { useToast } from '../components/Toast';
-import { ConfirmPanel, EmptyRow, Field, FormError, Panel, Pill, SkeletonRows, TakingsCard, errorMessage } from '../components/ui';
+import { ConfirmPanel, EmptyRow, Field, FormError, PAGE, Panel, Pill, ShowMore, SkeletonRows, TakingsCard, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { addDays, dayName, plural, shortDateTime, ymd } from '../lib/format';
@@ -320,10 +320,12 @@ export function DailyClose() {
     refetchInterval: 30_000,
     placeholderData: (previous) => previous,
   });
+  const [historyLimit, setHistoryLimit] = useState(PAGE);
   const history = useQuery({
-    queryKey: ['daily-close', 'history'],
-    queryFn: () => api<DailyCloseHistory>('/daily-close/history'),
+    queryKey: ['daily-close', 'history', historyLimit],
+    queryFn: () => api<DailyCloseHistory>(`/daily-close/history?limit=${historyLimit}`),
     enabled: can('dailyclose.see_expected'),
+    placeholderData: (previous) => previous,
   });
 
   const s = query.data?.summary;
@@ -393,6 +395,7 @@ export function DailyClose() {
           ) : (
             <EmptyRow>No days have been closed yet</EmptyRow>
           )}
+          {history.data && <ShowMore shown={history.data.closes.length} total={history.data.total} busy={history.isFetching} onMore={() => setHistoryLimit((n) => n + PAGE)} />}
         </section>
       )}
     </div>

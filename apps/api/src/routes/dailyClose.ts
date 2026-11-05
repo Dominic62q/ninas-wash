@@ -141,8 +141,10 @@ export const dailyCloseRoutes: FastifyPluginAsync = async (app) => {
     return { summary: await summaryFor(app.db, wanted, req.user!.permissions) };
   });
 
-  app.get('/history', { preHandler: app.requirePermission('dailyclose.see_expected') }, async (): Promise<DailyCloseHistory> => {
-    return { closes: await closeRows(app.db, undefined, 60) };
+  app.get('/history', { preHandler: app.requirePermission('dailyclose.see_expected') }, async (req): Promise<DailyCloseHistory> => {
+    const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(1000).default(30) }).parse(req.query);
+    const [{ n } = { n: 0 }] = await app.db.select({ n: sql<number>`count(*)::int` }).from(dailyCloses);
+    return { closes: await closeRows(app.db, undefined, limit), total: n };
   });
 
   app.post('/', close, async (req, reply) => {
