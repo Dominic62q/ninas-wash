@@ -51,6 +51,7 @@ const LABELS: Record<string, string> = {
   'dailyclose.reclose': 'Closed the day again',
   'dailyclose.reopen': 'Reopened a day',
   'expense.create': 'Recorded an expense',
+  'expense.receipt': 'Added a receipt photo',
   'expense.void': 'Voided an expense',
   'job.add_line': 'Added a service to a job',
   'job.assign': 'Changed who worked on a job',

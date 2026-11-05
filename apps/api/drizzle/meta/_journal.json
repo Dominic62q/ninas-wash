@@ -64,6 +64,13 @@
       "when": 1793868687402,
       "tag": "0008_payment_methods",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793869678726,
+      "tag": "0009_expense_categories_receipts",
+      "breakpoints": true
     }
   ]
 }

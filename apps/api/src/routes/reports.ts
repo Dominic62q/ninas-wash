@@ -79,7 +79,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
              coalesce(sum(e.amount) filter (where m.in_drawer), 0)::int as drawer,
              coalesce(sum(e.amount) filter (where not m.in_drawer), 0)::int as other,
              count(*)::int as count,
-             count(*) filter (where e.receipt_file is null or btrim(e.receipt_file) = '')::int as no_receipt
+             count(*) filter (where (e.receipt_file is null or btrim(e.receipt_file) = '') and not exists (select 1 from expense_receipts r where r.expense_id = e.id))::int as no_receipt
       from expenses e
       join payment_methods m on m.id = e.method_id
       where e.voided_at is null and e.spent_on >= ${from}::date and e.spent_on <= ${to}::date

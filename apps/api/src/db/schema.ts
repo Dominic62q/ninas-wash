@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   date,
   index,
   integer,
@@ -37,6 +38,8 @@ export const smsCreditKindEnum = pgEnum('sms_credit_kind', ['topup', 'adjust']);
 
 const id = () => bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity();
 const ref = (name: string) => bigint(name, { mode: 'number' });
+/** Raw bytes, such as a photo. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
 const stamp = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 const createdAt = () => stamp('created_at').notNull().defaultNow();
 
@@ -406,6 +409,42 @@ export const expenses = pgTable(
       sql`(${t.voidedAt} IS NULL) = (${t.voidedBy} IS NULL) AND (${t.voidedAt} IS NULL) = (${t.voidReason} IS NULL)`,
     ),
   ],
+);
+
+/**
+ * The kinds of expense. Expenses keep the category's name as text, so a name is never changed afterwards and a
+ * category that is switched off still reads correctly on old records.
+ */
+export const expenseCategories = pgTable(
+  'expense_categories',
+  {
+    id: id(),
+    name: text('name').notNull(),
+    needsNote: boolean('needs_note').notNull().default(false),
+    active: boolean('active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: stamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('expense_categories_name_unique').on(sql`lower(${t.name})`),
+    check('expense_categories_name_not_blank', sql`length(btrim(${t.name})) > 0`),
+  ],
+);
+
+/** Photos of the paper receipt. Kept in the database so one backup holds everything. Added, never changed. */
+export const expenseReceipts = pgTable(
+  'expense_receipts',
+  {
+    id: id(),
+    expenseId: ref('expense_id').notNull().references(() => expenses.id),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    data: bytea('data').notNull(),
+    uploadedBy: ref('uploaded_by').notNull().references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('expense_receipts_expense_idx').on(t.expenseId), check('expense_receipts_size_positive', sql`${t.size} > 0`)],
 );
 
 // ---- control -------------------------------------------------------------

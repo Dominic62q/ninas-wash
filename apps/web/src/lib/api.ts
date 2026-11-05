@@ -18,6 +18,28 @@ interface Options {
   body?: unknown;
 }
 
+/** Send a file as the request body, like a receipt photo. */
+export async function apiUpload<T>(path: string, file: Blob): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file });
+  } catch {
+    throw new ApiError(0, 'offline', 'Cannot reach the server. Check the internet connection and try again.');
+  }
+  const text = await res.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+  if (!res.ok) {
+    const err = (data as { error?: { code?: string; message?: string } } | null)?.error;
+    throw new ApiError(res.status, err?.code ?? 'error', err?.message ?? (res.status === 413 ? 'The photo is too big.' : 'Something went wrong. Try again.'));
+  }
+  return data as T;
+}
+
 /**
  * The only way the app talks to the server. Always same-site, so the sign-in cookie rides along.
  * The wash works online only: if the server cannot be reached we say so, and never pretend a save worked.

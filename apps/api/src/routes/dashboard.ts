@@ -2,6 +2,7 @@ import { and, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { can, type DashboardDto } from '@niinas/shared';
 import { commissionPayouts, commissions, dailyCloses, expenses, jobs, tips } from '../db/schema.js';
+import { noReceipt } from './expenses.js';
 import { dayOf } from '../lib/dayLock.js';
 import { figures } from './dailyClose.js';
 
@@ -116,7 +117,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       const [row] = await db
         .select({
           total: sql<number>`coalesce(sum(${expenses.amount}), 0)::int`,
-          withoutReceipt: sql<number>`count(*) filter (where ${expenses.receiptFile} is null or btrim(${expenses.receiptFile}) = '')::int`,
+          withoutReceipt: sql<number>`count(*) filter (where ${noReceipt})::int`,
         })
         .from(expenses)
         .where(and(eq(expenses.spentOn, day), isNull(expenses.voidedAt)));

@@ -7,7 +7,8 @@ const amount = z.number().int('Use whole pesewas').positive('Enter an amount').m
 const idemKey = z.string().trim().min(8).max(64);
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick a date');
 
-export const EXPENSE_CATEGORIES = [
+/** What the expense categories start as. After that the owner adds and switches them off in Settings. */
+export const STARTING_EXPENSE_CATEGORIES = [
   'Water',
   'Electricity',
   'Soap & chemicals',
@@ -21,14 +22,40 @@ export const EXPENSE_CATEGORIES = [
   'Rent',
   'Other',
 ] as const;
-export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export const expenseCategoryInput = z.object({
+  name: z.string().trim().min(1, 'Enter a name').max(40, 'Keep the name under 40 letters'),
+  /** The person must say what it was for, like with "Other". */
+  needsNote: z.boolean().default(false),
+  active: z.boolean().default(true),
+});
+export type ExpenseCategoryInput = z.infer<typeof expenseCategoryInput>;
+/** A name never changes, because old expenses carry it. Add a new category and switch the old one off. */
+export const updateExpenseCategoryInput = z
+  .object({ needsNote: z.boolean(), active: z.boolean() })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, 'Nothing to change');
+
+export interface ExpenseCategoryDto {
+  id: number;
+  name: string;
+  needsNote: boolean;
+  active: boolean;
+  /** Some expense already uses it. */
+  used: boolean;
+}
+
+/** The most receipt photos one expense can carry. */
+export const MAX_RECEIPT_PHOTOS = 5;
+/** The biggest photo the server takes, after the phone has shrunk it. */
+export const MAX_RECEIPT_BYTES = 2_500_000;
 
 /** An expense can be written down up to this many days late. Older than that, ask the owner. */
 export const EXPENSE_BACKDATE_DAYS = 7;
 
-export const expenseInput = z
-  .object({
-    category: z.enum(EXPENSE_CATEGORIES),
+export const expenseInput = z.object({
+    /** One of the categories in Settings. The server checks it exists and is switched on. */
+    category: z.string().trim().min(1, 'Pick a category').max(40),
     amount,
     methodId: z.number().int().positive('Pick how it was paid'),
     /** The day it was spent. Empty means today. */
@@ -38,8 +65,7 @@ export const expenseInput = z
     note: z.string().trim().max(200).nullish().transform((v) => v || null),
     /** Made once per form. A double-tap or a retry carries the same key, so it saves once. */
     idemKey,
-  })
-  .refine((e) => e.category !== 'Other' || e.note !== null, { path: ['note'], message: 'Say what it was for' });
+  });
 export type ExpenseInput = z.infer<typeof expenseInput>;
 
 export const closeInput = z.object({
@@ -56,14 +82,16 @@ export type CloseInput = z.infer<typeof closeInput>;
 
 export interface ExpenseDto {
   id: number;
-  category: ExpenseCategory | string;
+  category: string;
   amount: number;
   methodId: number;
   /** The method's name. */
   method: string;
   spentOn: string;
-  /** A receipt number or where the paper is kept. Null means no receipt, and the screen says so. */
+  /** A receipt number or where the paper is kept. */
   receipt: string | null;
+  /** Ids of the receipt photos. With no number and no photo, the screen says there is no receipt. */
+  photos: number[];
   note: string | null;
   by: string;
   at: string;
