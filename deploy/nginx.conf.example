@@ -19,7 +19,8 @@ server {
     # so the shared set lives in /etc/nginx/snippets/niinas-headers.conf and is included everywhere.
     include snippets/niinas-headers.conf;
 
-    client_max_body_size 1m;
+    # Expense receipt photos are sent as the raw image (the app allows up to 2.5 MB each), so 1m is too small.
+    client_max_body_size 3m;
 
     location /api/ {
         proxy_pass http://127.0.0.1:3001;
