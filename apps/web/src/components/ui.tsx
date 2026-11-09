@@ -40,7 +40,11 @@ export function Panel({
     <dialog
       ref={ref}
       aria-label={title}
-      onClose={onClose}
+      onClose={(e) => {
+        // React passes a nested dialog's close event up to the dialog around it. Without this check, closing a
+        // dropdown sheet inside a form panel also closed the form and threw away what had been typed.
+        if (e.target === ref.current) onClose();
+      }}
       onClick={(e) => {
         if (e.target === ref.current) onClose(); // a click on the dimmed area
       }}
