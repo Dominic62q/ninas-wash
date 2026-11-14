@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Navigate, useNavigate } from 'react-router';
 import { loginInput, type LoginInput } from '@niinas/shared';
-import logo from '../assets/niinas-logo.jpg';
+import logoDark from '../assets/niinas-logo-dark.png';
+import logo from '../assets/niinas-logo.png';
 import { ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -113,12 +114,16 @@ export function SignIn() {
 
       <div className="relative -mt-[18px] flex items-start justify-center rounded-t-[18px] bg-surface px-[22px] pb-8 pt-[26px] lg:mt-0 lg:items-center lg:rounded-none lg:p-12">
         <div className="flex w-full max-w-[400px] flex-col gap-5 lg:gap-7">
-          <img
-            src={logo}
-            alt="Niinas Wash: interior, exterior, deep clean"
-            width={320}
-            className="-ml-2 hidden h-auto w-[320px] lg:block"
-          />
+          {/* Transparent logo; the dark version lightens the tagline so it reads on the dark surface. */}
+          <div className="-ml-2 hidden w-[320px] lg:block">
+            <img
+              src={logo}
+              alt="Niinas Wash: interior, exterior, deep clean"
+              width={320}
+              className="logo-light h-auto w-full"
+            />
+            <img src={logoDark} alt="Niinas Wash: interior, exterior, deep clean" width={320} className="logo-dark h-auto w-full" />
+          </div>
           <div className="flex flex-col gap-1.5">
             <h1 className="display text-[24px] leading-[1.1] text-navy lg:text-[32px]">Sign in</h1>
           </div>
