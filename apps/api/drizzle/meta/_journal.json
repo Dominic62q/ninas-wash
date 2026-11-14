@@ -92,6 +92,20 @@
       "when": 1793871153971,
       "tag": "0012_attendant_logins",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794663079379,
+      "tag": "0013_walk_in_sales_and_stock",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794749479379,
+      "tag": "0014_walk_in_wash",
+      "breakpoints": true
     }
   ]
 }

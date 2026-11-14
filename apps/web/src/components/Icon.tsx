@@ -3,6 +3,7 @@ import type { IconName } from '../lib/nav';
 const PATHS: Record<IconName, string> = {
   home: 'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10',
   jobs: 'M4 7h16M4 12h16M4 17h10',
+  cart: 'M3.5 4.5h2.2l2 10.5h10.6l1.9-7.5H6.6M9.5 19.5h.01M17 19.5h.01',
   users: 'M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-3A3.5 3.5 0 0 0 6 17.5V19M11 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm9 8v-1.2a3 3 0 0 0-2.2-2.9',
   receipt: 'M6 3.5h12v17l-3-2-3 2-3-2-3 2v-17ZM9 8.5h6M9 12h6',
   coin: 'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm0-11v6m-2-4.5h3a1.5 1.5 0 0 1 0 3h-2a1.5 1.5 0 0 0 0 3h3',

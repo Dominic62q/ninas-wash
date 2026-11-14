@@ -1,9 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useForm } from 'react-hook-form';
 import { Navigate, useNavigate } from 'react-router';
 import { loginInput, type LoginInput } from '@niinas/shared';
-import logo from '../assets/niinas-logo.jpg';
+import logoDark from '../assets/niinas-logo-dark.png';
+import logo from '../assets/niinas-logo.png';
 import { ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -56,7 +57,7 @@ function Mark({ size, className }: { size: number; className?: string }) {
   );
 }
 
-/** How long the phone's welcome screen stays up after a good sign in. */
+/** How long the welcome screen stays up after a good sign in. */
 const WELCOME_MS = 1900;
 
 export function SignIn() {
@@ -67,6 +68,9 @@ export function SignIn() {
   const [welcome, setWelcome] = useState(false);
   /** True from the moment the form is sent, so a good sign in shows the welcome screen instead of jumping straight home. */
   const signingIn = useRef(false);
+  const submitRef = useRef<HTMLButtonElement>(null);
+  /** Centre of the Sign in button, so the welcome opens out of it on any screen size. */
+  const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
 
   const {
     register,
@@ -76,8 +80,8 @@ export function SignIn() {
 
   useEffect(() => {
     if (!welcome) return;
-    // Computers and people who asked for less motion skip the welcome screen.
-    const skip = window.matchMedia('(min-width: 1024px), (prefers-reduced-motion: reduce)').matches;
+    // People who asked for less motion skip the welcome screen.
+    const skip = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const t = setTimeout(() => navigate('/', { replace: true }), skip ? 0 : WELCOME_MS);
     return () => clearTimeout(t);
   }, [welcome, navigate]);
@@ -89,6 +93,8 @@ export function SignIn() {
     signingIn.current = true;
     try {
       await login(values);
+      const r = submitRef.current?.getBoundingClientRect();
+      if (r) setOrigin({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
       setWelcome(true);
     } catch (e) {
       signingIn.current = false;
@@ -113,12 +119,16 @@ export function SignIn() {
 
       <div className="relative -mt-[18px] flex items-start justify-center rounded-t-[18px] bg-surface px-[22px] pb-8 pt-[26px] lg:mt-0 lg:items-center lg:rounded-none lg:p-12">
         <div className="flex w-full max-w-[400px] flex-col gap-5 lg:gap-7">
-          <img
-            src={logo}
-            alt="Niinas Wash: interior, exterior, deep clean"
-            width={320}
-            className="-ml-2 hidden h-auto w-[320px] lg:block"
-          />
+          {/* Transparent logo; the dark version lightens the tagline so it reads on the dark surface. */}
+          <div className="-ml-2 hidden w-[320px] lg:block">
+            <img
+              src={logo}
+              alt="Niinas Wash: interior, exterior, deep clean"
+              width={320}
+              className="logo-light h-auto w-full"
+            />
+            <img src={logoDark} alt="Niinas Wash: interior, exterior, deep clean" width={320} className="logo-dark h-auto w-full" />
+          </div>
           <div className="flex flex-col gap-1.5">
             <h1 className="display text-[24px] leading-[1.1] text-navy lg:text-[32px]">Sign in</h1>
           </div>
@@ -181,7 +191,7 @@ export function SignIn() {
               </p>
             )}
 
-            <button type="submit" disabled={busy} className="btn btn-primary mt-1 w-full gap-2.5 text-base max-lg:h-[50px] lg:h-12">
+            <button ref={submitRef} type="submit" disabled={busy} className="btn btn-primary mt-1 w-full gap-2.5 text-base max-lg:h-[50px] lg:h-12">
               {busy && <span aria-hidden="true" className="h-5 w-5 animate-spin rounded-full border-[3px] border-white/40 border-t-white" />}
               {busy ? 'Signing in' : 'Sign in'}
             </button>
@@ -208,16 +218,23 @@ export function SignIn() {
         </div>
       </div>
 
-      {/* Phone: after a good sign in, the blue opens up from the button with a welcome, then Home takes over. */}
+      {/* After a good sign in, the blue opens up from the button with a welcome, then Home takes over. */}
       {welcome && user && (
-        <div role="status" aria-live="polite" className="welcome fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-blue text-center text-white lg:hidden">
-          <svg viewBox="0 0 390 340" preserveAspectRatio="xMaxYMin slice" aria-hidden="true" className="absolute left-0 top-0 h-[340px] w-full">
+        <div
+          role="status"
+          aria-live="polite"
+          className="welcome fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-blue text-center text-white"
+          style={origin ? ({ '--wx': `${origin.x}px`, '--wy': `${origin.y}px` } as CSSProperties) : undefined}
+        >
+          {/* Phone: the small sweep at the top right. Desktop: the big sweep from the blue panel. */}
+          <svg viewBox="0 0 390 340" preserveAspectRatio="xMaxYMin slice" aria-hidden="true" className="absolute left-0 top-0 h-[340px] w-full lg:hidden">
             <path d="M 376 -24 C 272 24 240 150 310 244 C 336 280 372 298 416 294" fill="none" stroke="#DA000C" strokeWidth="22" strokeLinecap="round" />
           </svg>
-          <Mark size={84} className="welcome-logo relative" />
-          <p className="welcome-hi relative mt-[18px] text-[22px] font-bold">Welcome back, {user.name.split(' ')[0]}</p>
-          <p className="welcome-sub relative mt-1.5 text-[14.5px] text-white/85">Opening today’s board</p>
-          <div className="welcome-track relative mt-7 h-[3px] w-[150px] overflow-hidden bg-white/30">
+          <Sweep className="absolute inset-y-0 right-0 hidden h-full w-1/2 lg:block" />
+          <Mark size={84} className="welcome-logo relative lg:h-[112px] lg:w-[112px]" />
+          <p className="welcome-hi relative mt-[18px] text-[22px] font-bold lg:mt-6 lg:text-[32px]">Welcome back, {user.name.split(' ')[0]}</p>
+          <p className="welcome-sub relative mt-1.5 text-[14.5px] text-white/85 lg:mt-2 lg:text-[17px]">Opening today’s board</p>
+          <div className="welcome-track relative mt-7 h-[3px] w-[150px] overflow-hidden bg-white/30 lg:mt-9 lg:w-[200px]">
             <i className="welcome-fill block h-full bg-surface" />
           </div>
         </div>

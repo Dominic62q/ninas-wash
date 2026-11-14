@@ -126,7 +126,7 @@ function TabBar({ items }: { items: NavItem[] }) {
   const money = moneyFor(items);
   const meActive = pathname === '/me' || [...meFor(items), ...settingsFor(items)].some((i) => pathname.startsWith(i.path));
   const moneyActive = pathname === '/money' || money.some((i) => pathname.startsWith(i.path));
-  const jobsActive = pathname.startsWith('/jobs') && pathname !== '/jobs/new';
+  const jobsActive = (pathname.startsWith('/jobs') && pathname !== '/jobs/new') || pathname === '/sell';
   const tab = (active: boolean) =>
     `flex min-h-[54px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold no-underline ${active ? 'text-blue-d' : 'text-ink-3'}`;
 
@@ -208,7 +208,11 @@ export function Shell() {
   /** A screen inside Settings gets a back arrow to Settings. */
   const up = current?.inSettings ? { back: '/settings', label: 'Back to settings' } : null;
   /** Pages opened from the board get a back arrow in the header instead of a link of their own. */
-  const sub = pathname.startsWith('/jobs/') ? { back: '/jobs', title: pathname === '/jobs/new' ? 'New job' : 'Job' } : null;
+  const sub = pathname.startsWith('/jobs/')
+    ? { back: '/jobs', title: pathname === '/jobs/new' ? 'New job' : 'Job' }
+    : pathname === '/sell'
+      ? { back: '/jobs', title: 'Sell items' }
+      : null;
   const title = sub?.title ?? current?.label ?? (pathname === '/money' ? 'Money' : pathname === '/me' ? 'Me' : 'Niinas Wash');
   const scroller = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();

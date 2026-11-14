@@ -4,6 +4,10 @@
 export interface ServiceDto {
   id: number;
   name: string;
+  /** A service is work on a car; an item is sold off the shelf. */
+  kind: 'service' | 'item';
+  /** Items only: how many are on the shelf. Always 0 for services. */
+  stock: number;
   price: number;
   commissionKind: 'percent' | 'fixed';
   /** Basis points when percent (1800 = 18%), pesewas when fixed. */
@@ -12,6 +16,21 @@ export interface ServiceDto {
   /** Times sold in the last 7 days. */
   sold7d: number;
   updatedAt: string;
+}
+
+/** One change to an item's stock. */
+export interface StockMoveDto {
+  id: number;
+  at: string;
+  /** Signed: +24 delivered, -2 sold. */
+  change: number;
+  reason: 'delivery' | 'sale' | 'void' | 'count';
+  /** On the shelf after this change. */
+  after: number;
+  note: string | null;
+  by: string;
+  /** The sale or wash it went out on (or came back from). */
+  jobId: number | null;
 }
 
 export interface ChangeEntry {
@@ -116,8 +135,11 @@ export interface Page<T> {
 /** One card on the job board. */
 export interface JobCard {
   id: number;
+  /** A wash has a car. A sale is a walk-in buying items, with no car. */
+  kind: 'wash' | 'sale';
   status: 'pending' | 'in_progress' | 'completed' | 'dispatched';
-  plate: string;
+  /** Empty for a walk-in customer (a sale, or a wash with no plate). */
+  plate: string | null;
   makeModel: string | null;
   carType: VehicleDto['carType'];
   customerName: string | null;
@@ -152,6 +174,8 @@ export interface JobLineDto {
   id: number;
   serviceId: number;
   name: string;
+  /** Items have no attendants and earn no commission. */
+  kind: 'service' | 'item';
   /** How many of it. */
   quantity: number;
   /** The whole line when it was sold: the price times the quantity. Later price changes never touch it. */
@@ -206,7 +230,8 @@ export type LedgerEntry =
       at: string;
       amount: number;
       jobId: number;
-      plate: string;
+      /** Null for a wash booked for a walk-in customer. */
+      plate: string | null;
       service: string;
       /** Their share of the line, in percent. */
       sharePct: number;
@@ -264,8 +289,11 @@ export interface JobDetail {
   id: number;
   /** Like J-20261029-031: the day, and which job of that day it was. */
   number: string;
+  /** A wash has a car. A sale is a walk-in buying items, with no car. */
+  kind: 'wash' | 'sale';
   status: 'pending' | 'in_progress' | 'completed' | 'dispatched';
-  vehicle: VehicleDto;
+  /** Empty for a walk-in customer (a sale, or a wash with no plate). */
+  vehicle: VehicleDto | null;
   customer: CustomerRow | null;
   createdBy: string;
   createdAt: string;
@@ -292,7 +320,8 @@ export interface JobDetail {
 export interface ReceiptDto {
   number: string;
   at: string;
-  plate: string;
+  /** Empty for a walk-in customer (a sale, or a wash with no plate). */
+  plate: string | null;
   status: 'pending' | 'in_progress' | 'completed' | 'dispatched';
   voided: boolean;
   lines: { name: string; quantity: number; price: number }[];

@@ -26,6 +26,12 @@ import {
 
 export const carTypeEnum = pgEnum('car_type', ['saloon', 'suv', 'pickup', 'van', 'other']);
 export const jobStatusEnum = pgEnum('job_status', ['pending', 'in_progress', 'completed', 'dispatched']);
+/** A wash is work on a car. An item is something on the shelf (a duster, car shine, a drink): no attendants, counted stock. */
+export const serviceKindEnum = pgEnum('service_kind', ['service', 'item']);
+/** A wash has a car. A sale is items sold over the counter to a walk-in, with no car. */
+export const jobKindEnum = pgEnum('job_kind', ['wash', 'sale']);
+/** Why an item's stock changed: delivered, sold, given back by a void, or corrected after a count. */
+export const stockReasonEnum = pgEnum('stock_reason', ['delivery', 'sale', 'void', 'count']);
 export const commissionKindEnum = pgEnum('commission_kind', ['percent', 'fixed']);
 export const commissionStatusEnum = pgEnum('commission_status', ['earned', 'reversed']);
 export const tipKindEnum = pgEnum('tip_kind', ['direct', 'held']);
@@ -144,15 +150,21 @@ export const services = pgTable(
   {
     id: id(),
     name: text('name').notNull().unique(),
+    kind: serviceKindEnum('kind').notNull().default('service'),
     price: integer('price').notNull(),
     commissionKind: commissionKindEnum('commission_kind').notNull(),
     commissionValue: integer('commission_value').notNull(),
+    /** Items only: how many are on the shelf. Changed only together with a stock_moves row. */
+    stock: integer('stock').notNull().default(0),
     active: boolean('active').notNull().default(true),
     createdAt: createdAt(),
     updatedAt: stamp('updated_at').notNull().defaultNow(),
   },
   (t) => [
     check('services_price_not_negative', sql`${t.price} >= 0`),
+    check('services_stock_not_negative', sql`${t.stock} >= 0`),
+    check('services_item_no_commission', sql`${t.kind} <> 'item' OR ${t.commissionValue} = 0`),
+    check('services_stock_items_only', sql`${t.kind} = 'item' OR ${t.stock} = 0`),
     check(
       'services_commission_in_range',
       sql`${t.commissionValue} >= 0 AND (${t.commissionKind} <> 'percent' OR ${t.commissionValue} <= 10000)`,
@@ -160,12 +172,14 @@ export const services = pgTable(
   ],
 );
 
-/** One car's visit. Everything sold and paid for hangs off it. */
+/** One car's visit, or one walk-in sale over the counter. Everything sold and paid for hangs off it. */
 export const jobs = pgTable(
   'jobs',
   {
     id: id(),
-    vehicleId: ref('vehicle_id').notNull().references(() => vehicles.id),
+    kind: jobKindEnum('kind').notNull().default('wash'),
+    /** Every wash has a car. A walk-in sale has none. */
+    vehicleId: ref('vehicle_id').references(() => vehicles.id),
     createdBy: ref('created_by').notNull().references(() => users.id),
     status: jobStatusEnum('status').notNull().default('pending'),
     /** Whole-job discount in pesewas. It sits on the job, not on a line. */
@@ -187,6 +201,7 @@ export const jobs = pgTable(
     index('jobs_created_idx').on(t.createdAt),
     index('jobs_vehicle_idx').on(t.vehicleId),
     check('jobs_discount_not_negative', sql`${t.discount} >= 0`),
+    check('jobs_sale_has_no_car', sql`${t.kind} = 'wash' OR ${t.vehicleId} IS NULL`),
     check(
       'jobs_void_complete',
       sql`(${t.voidedAt} IS NULL) = (${t.voidedBy} IS NULL) AND (${t.voidedAt} IS NULL) = (${t.voidReason} IS NULL)`,
@@ -234,6 +249,34 @@ export const jobLineAttendants = pgTable(
     unique('job_line_attendants_once').on(t.jobLineId, t.attendantId),
     index('job_line_attendants_attendant_idx').on(t.attendantId),
     check('job_line_attendants_share_range', sql`${t.shareBp} BETWEEN 1 AND 10000`),
+  ],
+);
+
+/**
+ * Every change to an item's stock, with why. Never edited or deleted: a mistake is fixed with a count.
+ * `change` is signed: a delivery of 24 is +24, a sale of 2 is -2.
+ */
+export const stockMoves = pgTable(
+  'stock_moves',
+  {
+    id: id(),
+    serviceId: ref('service_id').notNull().references(() => services.id),
+    change: integer('change').notNull(),
+    reason: stockReasonEnum('reason').notNull(),
+    /** The sale or wash the items went out on (or came back from, for a void). */
+    jobId: ref('job_id').references(() => jobs.id),
+    /** Stock on the shelf after this move. */
+    after: integer('after').notNull(),
+    note: text('note'),
+    by: ref('by').notNull().references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('stock_moves_service_idx').on(t.serviceId, t.createdAt),
+    index('stock_moves_job_idx').on(t.jobId),
+    check('stock_moves_change_not_zero', sql`${t.change} <> 0`),
+    check('stock_moves_after_not_negative', sql`${t.after} >= 0`),
+    check('stock_moves_job_for_sales', sql`(${t.reason} IN ('sale', 'void')) = (${t.jobId} IS NOT NULL)`),
   ],
 );
 

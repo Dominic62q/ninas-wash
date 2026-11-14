@@ -215,6 +215,16 @@
     font-weight: 700;
     letter-spacing: 0.06em;
   }
+  /* No car: same size and place as a plate, but quieter and without the GH strip. */
+  .plate-walkin {
+    padding-left: 8px;
+    border-style: dashed;
+    color: var(--color-ink-2);
+    letter-spacing: 0.01em;
+  }
+  .plate-walkin::before {
+    content: none;
+  }
   .plate-sm {
     font-size: 12px;
   }
@@ -425,10 +435,10 @@
 /* After signing in on a phone, the blue opens up from the button, then a welcome and a thin progress bar. */
 @keyframes welcome-open {
   from {
-    clip-path: circle(0 at 50% 78%);
+    clip-path: circle(0 at var(--wx, 50%) var(--wy, 78%));
   }
   to {
-    clip-path: circle(150% at 50% 78%);
+    clip-path: circle(150% at var(--wx, 50%) var(--wy, 78%));
   }
 }
 @keyframes welcome-pop {
@@ -459,6 +469,17 @@
     width: 100%;
   }
 }
+/* Logo: show the version that matches the theme. */
+.logo-dark {
+  display: none;
+}
+:root[data-theme='dark'] .logo-light {
+  display: none;
+}
+:root[data-theme='dark'] .logo-dark {
+  display: block;
+}
+
 .welcome {
   animation: welcome-open 0.6s cubic-bezier(0.65, 0, 0.35, 1) backwards;
 }
