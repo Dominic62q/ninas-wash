@@ -74,11 +74,11 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
       <Link to={detail} className="block min-w-0 flex-1 px-3 py-3 text-ink no-underline lg:px-4 lg:pb-3 lg:pt-4">
         <div className="flex items-center gap-3 lg:flex-wrap lg:items-baseline lg:gap-x-3 lg:gap-y-1">
           <p>
-            <Plate plate={job.plate} />
+            <Plate plate={job.plate} walkIn="Walk-in" />
           </p>
           <p className="num font-semibold text-ink max-lg:text-sm lg:ml-auto lg:text-base">{formatGHS(job.total)}</p>
         </div>
-        <p className="hidden text-sm text-ink-2 lg:mt-2 lg:block">{[car, job.customerName].filter(Boolean).join(' · ') || 'Walk-in'}</p>
+        <p className="hidden text-sm text-ink-2 lg:mt-2 lg:block">{[car, job.customerName].filter(Boolean).join(' · ') || 'Walk-in customer'}</p>
         <p className="mt-1 truncate text-sm font-medium text-ink lg:whitespace-normal">{job.services.join(', ')}</p>
         <p className="mt-1 text-xs text-ink-3 max-lg:truncate lg:mt-2">
           <span className={job.needsAttendant ? 'font-medium text-amber' : ''}>
@@ -109,13 +109,13 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
               Assign
             </Link>
           ) : (
-            <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('start', job.id, job.plate)}>
+            <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('start', job.id, job.plate ?? 'Walk-in')}>
               <span className="lg:hidden">Start</span>
               <span className="max-lg:hidden">Start wash</span>
             </button>
           ))}
         {job.status === 'in_progress' && (
-          <button type="button" className={`btn btn-primary whitespace-nowrap ${ACT} ${QUIET}`} onClick={() => onAsk('complete', job.id, job.plate)}>
+          <button type="button" className={`btn btn-primary whitespace-nowrap ${ACT} ${QUIET}`} onClick={() => onAsk('complete', job.id, job.plate ?? 'Walk-in')}>
             <span className="lg:hidden">Done</span>
             <span className="max-lg:hidden">Mark complete</span>
           </button>
@@ -131,7 +131,7 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
               <p className="w-[84px] py-2 text-center text-sm font-medium text-amber lg:w-auto lg:py-0">Owes</p>
             )
           ) : can('job.dispatch') ? (
-            <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('dispatch', job.id, job.plate)}>
+            <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('dispatch', job.id, job.plate ?? 'Walk-in')}>
               Dispatch
             </button>
           ) : (
@@ -293,6 +293,9 @@ export function Jobs() {
             </button>
           ))}
         </div>
+        <Link to="/sell" className="btn shrink-0 px-4 font-medium no-underline lg:hidden">
+          Sell items
+        </Link>
         <Link to="/jobs/new" className="btn btn-primary shrink-0 px-4 font-medium no-underline max-lg:hidden lg:h-10">
           New job
         </Link>

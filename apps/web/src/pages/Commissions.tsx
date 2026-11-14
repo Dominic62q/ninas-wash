@@ -118,10 +118,10 @@ export function LedgerRow({ entry, onVoid }: { entry: LedgerEntry; onVoid?: (p: 
           <p className="truncate">
             {onVoid ? (
               <Link to={`/jobs/${entry.jobId}`} className="font-medium text-blue-d">
-                {entry.plate.toUpperCase()}
+                {entry.plate?.toUpperCase() ?? 'Walk-in'}
               </Link>
             ) : (
-              <span className="font-medium text-ink">{entry.plate.toUpperCase()}</span>
+              <span className="font-medium text-ink">{entry.plate?.toUpperCase() ?? 'Walk-in'}</span>
             )}{' '}
             <span className={entry.reversed ? 'line-through' : 'text-ink-2'}>{entry.service}</span>
           </p>

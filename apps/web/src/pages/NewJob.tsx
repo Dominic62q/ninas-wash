@@ -12,6 +12,7 @@ import {
   type CustomerRow,
   type VehicleDto,
   type VehicleMatch,
+  type ServiceKind,
 } from '@niinas/shared';
 import { Avatar } from '../components/Avatar';
 import { MultiSelect, Select } from '../components/Dropdown';
@@ -73,6 +74,8 @@ export function NewJob() {
   const attendants = useAttendants();
 
   const [plate, setPlate] = useState('');
+  /** A customer with no number plate to give: the plate, car and owner are skipped. */
+  const [walkIn, setWalkIn] = useState(false);
   const [makeModel, setMakeModel] = useState('');
   const [carType, setCarType] = useState('');
   const [saveOwner, setSaveOwner] = useState(false);
@@ -111,8 +114,8 @@ export function NewJob() {
   const exactMatch = matches.some((m) => normalizePlate(m.vehicle.plate) === plateKey);
   const showMatches = matches.length > 0 && !exactMatch && !known;
   const searching = plateKey.length >= 3 && (lookupKey !== plateKey || lookup.isFetching);
-  const isNewCar = plateKey.length >= 3 && !searching && !known;
-  const needsOwner = !!known && !known.customer;
+  const isNewCar = !walkIn && plateKey.length >= 3 && !searching && !known;
+  const needsOwner = !walkIn && !!known && !known.customer;
 
   const serviceList = services.data?.services ?? [];
   const people = attendants.data?.attendants ?? [];
@@ -120,8 +123,10 @@ export function NewJob() {
   const subtotal = serviceList.filter((s) => picked.has(s.id)).reduce((sum, s) => sum + s.price * qty(s.id), 0);
   const discountValue = discount.trim() === '' ? 0 : parseGHS(discount);
   const total = Math.max(subtotal - (discountValue ?? 0), 0);
-  /** People on every chosen service, and everyone on at least one. */
-  const lines = [...picked.values()];
+  /** Items come off the shelf: they take no attendants and cannot go past what is in stock. */
+  const itemIds = new Set(serviceList.filter((s) => s.kind === 'item').map((s) => s.id));
+  /** People on every chosen service, and everyone on at least one. Items are left out. */
+  const lines = [...picked].filter(([id]) => !itemIds.has(id)).map(([, ids]) => ids);
   const onAll = lines.length === 0 ? [] : lines.reduce((a, b) => a.filter((id) => b.includes(id)));
   const onAny = new Set(lines.flat()).size;
 
@@ -151,29 +156,31 @@ export function NewJob() {
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
 
-  /** Phone: the services dropdown. A new service starts with the people already on every other service. */
-  function setServices(ids: number[]) {
-    setPicked((m) => new Map(ids.map((id) => [id, m.get(id) ?? onAll] as const)));
-    setQuantities((m) => new Map([...m].filter(([id]) => ids.includes(id))));
+  /** Phone: a dropdown. A new service starts with the people already on every other service. The other kind is left as it is. */
+  function setServices(ids: number[], kind: ServiceKind) {
+    const other = (id: number) => (itemIds.has(id) ? 'item' : 'service') !== kind;
+    setPicked((m) => new Map([...[...m].filter(([id]) => other(id)), ...ids.map((id) => [id, itemIds.has(id) ? [] : (m.get(id) ?? onAll)] as const)]));
+    setQuantities((m) => new Map([...m].filter(([id]) => other(id) || ids.includes(id))));
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
 
   /** Phone: the shortcut row. Adds the person to every service, or takes them off every one. */
   function toggleCrew(id: number) {
     const remove = onAll.includes(id);
-    setPicked((m) => new Map([...m].map(([k, ids]) => [k, remove ? ids.filter((x) => x !== id) : ids.includes(id) ? ids : [...ids, id]] as const)));
+    setPicked((m) => new Map([...m].map(([k, ids]) => [k, itemIds.has(k) ? ids : remove ? ids.filter((x) => x !== id) : ids.includes(id) ? ids : [...ids, id]] as const)));
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
 
   function submit(start: boolean) {
     const found: Record<string, string> = {};
     if (discountValue === null) found.discount = 'Enter the discount, like 5 or 5.50';
-    if (start && [...picked.values()].some((ids) => ids.length === 0)) {
+    if (start && lines.some((ids) => ids.length === 0)) {
       found.lines = 'Pick attendants for each service, or save as pending';
     }
     const wantsOwner = (isNewCar || needsOwner) && saveOwner;
     const parsed = createJobInput.safeParse({
-      plate,
+      plate: walkIn ? '' : plate,
+      walkIn,
       makeModel: isNewCar ? makeModel : null,
       carType: isNewCar ? carType || null : null,
       lines: [...picked].map(([serviceId, attendantIds]) => ({ serviceId, quantity: qty(serviceId), attendantIds })),
@@ -193,6 +200,113 @@ export function NewJob() {
     save.mutate(parsed.data);
   }
 
+  /** Services and items sit in separate boxes. Items are optional extras: they take no attendant and no commission. */
+  const catalog = (kind: ServiceKind) => {
+    const isItem = kind === 'item';
+    const list = serviceList.filter((s) => s.kind === kind);
+    if (isItem && list.length === 0) return null;
+    return (
+      <section aria-label={isItem ? 'Items' : 'Services'} className="flex flex-col gap-3 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card sm:p-5">
+        <h2 className="display text-lg text-navy lg:text-xl">{isItem ? 'Items (optional)' : 'Services'}</h2>
+        {!isItem && (services.isPending || attendants.isPending) && <p className="text-ink-3">Loading…</p>}
+        {!isItem && services.isError && <FormError message={errorMessage(services.error)} />}
+        {!isItem && services.isSuccess && list.length === 0 && <p className="text-ink-3">No services yet. Add them under Services.</p>}
+        {/* Phone: one dropdown. */}
+        {list.length > 0 && (
+          <div className="lg:hidden">
+            <MultiSelect
+              label={isItem ? 'Items' : 'Services'}
+              placeholder={isItem ? 'Choose items' : 'Choose services'}
+              options={list
+                .filter((s) => !isItem || s.stock > 0 || picked.has(s.id))
+                .map((s) => ({ value: s.id, label: `${s.name} · ${formatGHS(s.price)}${isItem ? ` · ${s.stock} left` : ''}` }))}
+              value={list.filter((s) => picked.has(s.id)).map((s) => s.id)}
+              onChange={(ids) => setServices(ids, kind)}
+            />
+          </div>
+        )}
+        {/* Chosen services sit on top, each with its own attendants. */}
+        {list
+          .filter((s) => picked.has(s.id))
+          .map((s) => {
+            const ids = picked.get(s.id) ?? [];
+            return (
+              <div key={s.id} className="rise flex flex-col gap-2.5 border-[1.5px] border-blue bg-blue-50 p-3 max-lg:rounded-[10px] max-lg:border-0">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="min-w-0 flex-1 truncate font-medium text-ink">{s.name}</p>
+                  <span className="num font-semibold text-navy">{formatGHS(s.price * qty(s.id))}</span>
+                  <button type="button" aria-label={`Remove ${s.name}`} onClick={() => toggleService(s.id)} className="tap -mr-1 px-1.5 text-lg leading-none text-ink-3">
+                    ✕
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <QuantityStepper label={s.name} value={qty(s.id)} onChange={(n) => setQuantities((m) => new Map(m).set(s.id, n))} max={s.kind === 'item' ? s.stock : undefined} />
+                  {qty(s.id) > 1 && (
+                    <span className="num text-sm text-ink-3">
+                      {qty(s.id)} × {formatGHS(s.price)}
+                    </span>
+                  )}
+                </div>
+                {s.kind === 'item' ? (
+                  <p className="text-xs text-ink-3">{s.stock} on the shelf. Items need no attendant.</p>
+                ) : people.length === 0 ? (
+                  <p className="text-sm text-ink-3">No attendants yet. Add them under Staff and users.</p>
+                ) : (
+                  <>
+                    <div className="max-lg:hidden">
+                      <AttendantPicker
+                        label={`Attendants for ${s.name}`}
+                        options={people}
+                        value={ids}
+                        onChange={(next) => {
+                          setPicked((m) => new Map(m).set(s.id, next));
+                          setErrors({});
+                        }}
+                      />
+                    </div>
+                    <div className="lg:hidden">
+                      <WasherRow
+                        people={people}
+                        value={ids}
+                        label={s.name}
+                        onToggle={(id) => {
+                          setPicked((m) => new Map(m).set(s.id, ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+                          setErrors({});
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+                {sharedNote(ids.length) && <p className="text-xs text-ink-3">{sharedNote(ids.length)}</p>}
+              </div>
+            );
+          })}
+        {!isItem && errors.lines && <p role="alert" className="text-[13px] font-medium text-red-d">{errors.lines}</p>}
+
+        <div className="grid grid-cols-2 gap-2 max-lg:hidden sm:grid-cols-3">
+          {list
+            .filter((s) => !picked.has(s.id))
+            .map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                aria-pressed={false}
+                disabled={s.kind === 'item' && s.stock === 0}
+                onClick={() => toggleService(s.id)}
+                className="flex min-h-[52px] cursor-pointer flex-col justify-center border-[1.5px] border-line-strong bg-surface px-3 py-1.5 text-left disabled:cursor-default disabled:opacity-50"
+              >
+                <span className="text-sm font-medium leading-tight text-ink">{s.name}</span>
+                <span className="num text-sm font-semibold text-navy">
+                  {formatGHS(s.price)}
+                  {s.kind === 'item' && <span className="font-normal text-ink-3"> · {s.stock === 0 ? 'out of stock' : `${s.stock} left`}</span>}
+                </span>
+              </button>
+            ))}
+        </div>
+      </section>
+    );
+  };
+
   return (
     <form
       noValidate
@@ -202,6 +316,15 @@ export function NewJob() {
     >
       <section aria-label="The car" className="flex flex-col gap-3 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card lg:gap-4 lg:p-5">
         <h2 className="display text-lg text-navy lg:text-xl">The car</h2>
+        <Check label="Walk-in customer" checked={walkIn} onChange={setWalkIn} hint="Tick this when there is no number plate to put down" />
+        {walkIn && (
+          <div className="flex items-center justify-between gap-3 border border-line-2 px-3 py-2.5 text-sm max-lg:rounded-[10px]">
+            <span className="text-ink-3">Customer</span>
+            <span className="truncate font-medium text-ink">Walk-in customer, no plate</span>
+          </div>
+        )}
+        {!walkIn && (
+        <>
         <Field label="Number plate" error={errors.plate}>
           <input
             className="input uppercase max-lg:hidden"
@@ -254,7 +377,7 @@ export function NewJob() {
                   className="flex min-h-[56px] w-full cursor-pointer items-center gap-3 px-4 py-2 text-left active:bg-band disabled:opacity-60"
                 >
                   <Plate plate={m.vehicle.plate} size="sm" />
-                  <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{[m.owner ?? 'Walk-in', m.vehicle.makeModel].filter(Boolean).join(' · ')}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{[m.owner ?? 'Walk-in customer', m.vehicle.makeModel].filter(Boolean).join(' · ')}</span>
                   {m.onBoard && <span className="text-xs font-medium text-amber">On the board</span>}
                 </button>
               </li>
@@ -282,7 +405,7 @@ export function NewJob() {
                 >
                   <Plate plate={m.vehicle.plate} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm text-ink-2">
-                    {[m.owner ?? 'Walk-in', m.vehicle.makeModel].filter(Boolean).join(' · ')}
+                    {[m.owner ?? 'Walk-in customer', m.vehicle.makeModel].filter(Boolean).join(' · ')}
                   </span>
                   {m.onBoard && <span className="text-xs font-medium text-amber">On the board</span>}
                 </button>
@@ -307,7 +430,7 @@ export function NewJob() {
                 ? `${known.customer.name}${known.customer.phone ? `, ${formatPhone(known.customer.phone)}` : ''} · ${plural(known.customer.visits, 'visit')}${
                     known.customer.lastVisit ? `, last on ${shortDate(known.customer.lastVisit)}` : ''
                   }`
-                : 'Walk-in car with no owner saved'}
+                : 'Walk-in customer, no owner saved'}
             </p>
           </div>
         )}
@@ -328,6 +451,13 @@ export function NewJob() {
               </Field>
             </div>
           </>
+        )}
+        {/* Every car starts as a walk-in. Saving the owner turns it into a named customer. */}
+        {!known?.customer && (
+          <div className="flex items-center justify-between gap-3 border border-line-2 px-3 py-2.5 text-sm max-lg:rounded-[10px]">
+            <span className="text-ink-3">Customer</span>
+            <span className="truncate font-medium text-ink">{saveOwner && (isNewCar || needsOwner) ? owner.name.trim() || 'New customer' : 'Walk-in customer'}</span>
+          </div>
         )}
         {(isNewCar || needsOwner) && (
           <>
@@ -356,102 +486,16 @@ export function NewJob() {
             )}
           </>
         )}
-      </section>
-
-      <section aria-label="Services" className="flex flex-col gap-3 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card sm:p-5">
-        <h2 className="display text-lg text-navy lg:text-xl">Services</h2>
-        {(services.isPending || attendants.isPending) && <p className="text-ink-3">Loading…</p>}
-        {services.isError && <FormError message={errorMessage(services.error)} />}
-        {services.isSuccess && serviceList.length === 0 && <p className="text-ink-3">No services yet. Add them under Services.</p>}
-        {/* Phone: one dropdown for the services. */}
-        {serviceList.length > 0 && (
-          <div className="lg:hidden">
-            <MultiSelect
-              label="Services"
-              placeholder="Choose services"
-              options={serviceList.map((s) => ({ value: s.id, label: `${s.name} · ${formatGHS(s.price)}` }))}
-              value={[...picked.keys()]}
-              onChange={setServices}
-            />
-          </div>
+        </>
         )}
-        {/* Chosen services sit on top, each with its own attendants. */}
-        {serviceList
-          .filter((s) => picked.has(s.id))
-          .map((s) => {
-            const ids = picked.get(s.id) ?? [];
-            return (
-              <div key={s.id} className="rise flex flex-col gap-2.5 border-[1.5px] border-blue bg-blue-50 p-3 max-lg:rounded-[10px] max-lg:border-0">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="min-w-0 flex-1 truncate font-medium text-ink">{s.name}</p>
-                  <span className="num font-semibold text-navy">{formatGHS(s.price * qty(s.id))}</span>
-                  <button type="button" aria-label={`Remove ${s.name}`} onClick={() => toggleService(s.id)} className="tap -mr-1 px-1.5 text-lg leading-none text-ink-3">
-                    ✕
-                  </button>
-                </div>
-                <div className="flex items-center gap-3">
-                  <QuantityStepper label={s.name} value={qty(s.id)} onChange={(n) => setQuantities((m) => new Map(m).set(s.id, n))} />
-                  {qty(s.id) > 1 && (
-                    <span className="num text-sm text-ink-3">
-                      {qty(s.id)} × {formatGHS(s.price)}
-                    </span>
-                  )}
-                </div>
-                {people.length === 0 ? (
-                  <p className="text-sm text-ink-3">No attendants yet. Add them under Staff and users.</p>
-                ) : (
-                  <>
-                    <div className="max-lg:hidden">
-                      <AttendantPicker
-                        label={`Attendants for ${s.name}`}
-                        options={people}
-                        value={ids}
-                        onChange={(next) => {
-                          setPicked((m) => new Map(m).set(s.id, next));
-                          setErrors({});
-                        }}
-                      />
-                    </div>
-                    <div className="lg:hidden">
-                      <WasherRow
-                        people={people}
-                        value={ids}
-                        label={s.name}
-                        onToggle={(id) => {
-                          setPicked((m) => new Map(m).set(s.id, ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-                          setErrors({});
-                        }}
-                      />
-                    </div>
-                  </>
-                )}
-                {sharedNote(ids.length) && <p className="text-xs text-ink-3">{sharedNote(ids.length)}</p>}
-              </div>
-            );
-          })}
-        {errors.lines && <p role="alert" className="text-[13px] font-medium text-red-d">{errors.lines}</p>}
-
-        <div className="grid grid-cols-2 gap-2 max-lg:hidden sm:grid-cols-3">
-          {serviceList
-            .filter((s) => !picked.has(s.id))
-            .map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                aria-pressed={false}
-                onClick={() => toggleService(s.id)}
-                className="flex min-h-[52px] cursor-pointer flex-col justify-center border-[1.5px] border-line-strong bg-surface px-3 py-1.5 text-left"
-              >
-                <span className="text-sm font-medium leading-tight text-ink">{s.name}</span>
-                <span className="num text-sm font-semibold text-navy">{formatGHS(s.price)}</span>
-              </button>
-            ))}
-        </div>
       </section>
+
+      {catalog('service')}
+      {catalog('item')}
 
       {/* Phone: a shortcut for putting the same people on every service, and the start-now tick. */}
       <section aria-label="Same people on every service" className="flex flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-card lg:hidden">
-        {picked.size > 1 && people.length > 0 && (
+        {lines.length > 1 && people.length > 0 && (
           <>
             <h2 className="display text-lg text-navy">Same people on every service</h2>
             <WasherRow people={people} value={onAll} label="every service" onToggle={toggleCrew} />

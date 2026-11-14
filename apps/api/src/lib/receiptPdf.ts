@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
 import { formatGHS, type ReceiptDto } from '@niinas/shared';
 
@@ -9,6 +10,15 @@ const font = (name: string) => require.resolve(`@fontsource/${name}`);
 const REGULAR = font('hanken-grotesk/files/hanken-grotesk-latin-400-normal.woff');
 const MEDIUM = font('hanken-grotesk/files/hanken-grotesk-latin-600-normal.woff');
 const CEDI = font('noto-sans/files/noto-sans-latin-ext-600-normal.woff');
+
+/** The logo, trimmed to its edges so it can be placed exactly. 688 x 334. */
+const LOGO = fileURLToPath(new URL('../assets/niinas-logo.png', import.meta.url));
+const LOGO_RATIO = 334 / 688;
+
+// The brand's own blue and red, taken from the logo.
+const BLUE = '#036fdb';
+const RED_BRAND = '#f3020b';
+const PANEL = '#f3f6fb';
 
 const INK = '#1a1d23';
 const MUTED = '#6b7280';
@@ -49,69 +59,104 @@ export function receiptPdf(r: ReceiptDto): Promise<Buffer> {
     doc.on('error', reject);
     doc.registerFont('regular', REGULAR).registerFont('medium', MEDIUM).registerFont('cedi', CEDI);
 
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
     const left = MARGIN;
-    const right = doc.page.width - MARGIN;
+    const right = pageW - MARGIN;
     const width = right - left;
-    const rule = (y: number) => doc.moveTo(left, y).lineTo(right, y).lineWidth(0.6).strokeColor(LINE).stroke();
+    const rule = (y: number, color = LINE, w = 0.6) => doc.moveTo(left, y).lineTo(right, y).lineWidth(w).strokeColor(color).stroke();
+    const caps = (text: string, x: number, y: number, opts: { width?: number; align?: 'left' | 'right' | 'center' } = {}) =>
+      doc.font('medium').fontSize(7.5).fillColor(MUTED).text(text.toUpperCase(), x, y, { characterSpacing: 1.1, lineBreak: false, ...opts });
 
-    doc.font('medium').fontSize(22).fillColor(NAVY).text('Niinas Wash', left, MARGIN, { lineBreak: false });
-    doc.font('regular').fontSize(9.5).fillColor(MUTED).text(`Receipt ${r.number}`, left, MARGIN + 30, { lineBreak: false });
-    doc.text(when(r.at), left, MARGIN + 30, { width, align: 'right', lineBreak: false });
+    // The brand bar across the top: blue with a short red sweep at the end.
+    doc.rect(0, 0, pageW, 7).fill(BLUE);
+    doc.rect(pageW - 90, 0, 90, 7).fill(RED_BRAND);
 
-    let y = MARGIN + 58;
-    doc.font('medium').fontSize(17).fillColor(INK).text(r.plate.toUpperCase(), left, y, { lineBreak: false });
-    y += 34;
+    // The logo on the left, the receipt number and date on the right.
+    const logoW = 146;
+    const logoH = logoW * LOGO_RATIO;
+    const top = 26;
+    doc.image(LOGO, left - 1, top, { width: logoW });
+    caps('Receipt', left, top + 6, { width, align: 'right' });
+    doc.font('medium').fontSize(17).fillColor(NAVY).text(r.number, left, top + 19, { width, align: 'right', lineBreak: false });
+    doc.font('regular').fontSize(9).fillColor(MUTED).text(when(r.at), left, top + 42, { width, align: 'right', lineBreak: false });
+
+    // Who it is for.
+    let y = top + logoH + 14;
+    doc.roundedRect(left, y, width, 46, 5).fill(PANEL);
+    doc.rect(left, y, 3, 46).fill(BLUE);
+    caps(r.plate ? 'Vehicle' : 'Customer', left + 16, y + 9);
+    doc.font('medium').fontSize(16).fillColor(INK).text(r.plate ? r.plate.toUpperCase() : 'Walk-in customer', left + 16, y + 21, { lineBreak: false });
+    const state = r.voided ? { text: 'Cancelled', color: RED } : r.balance > 0 ? { text: 'Part paid', color: AMBER } : { text: 'Paid in full', color: GREEN };
+    doc.font('medium').fontSize(9);
+    const pillW = doc.widthOfString(state.text) + 22;
+    doc.roundedRect(right - pillW - 12, y + 14, pillW, 20, 10).fill(state.color);
+    doc.fillColor('#ffffff').text(state.text, right - pillW - 12, y + 20, { width: pillW, align: 'center', lineBreak: false });
+    y += 46 + 18;
 
     if (r.voided) {
-      doc.rect(left, y, 3, 30).fill(RED);
-      doc.font('medium').fontSize(10.5).fillColor(RED).text('This job was cancelled. Nothing is owed.', left + 12, y + 9, { lineBreak: false });
-      y += 44;
+      doc.rect(left, y, 3, 28).fill(RED);
+      doc.font('medium').fontSize(10.5).fillColor(RED).text('This job was cancelled. Nothing is owed.', left + 12, y + 8, { lineBreak: false });
+      y += 42;
     }
 
-    rule(y);
-    y += 12;
+    // The bill: item, how many, amount.
+    const qtyRight = right - 92;
+    const header = (at: number) => {
+      caps('Item', left, at);
+      caps('Qty', qtyRight - 40, at, { width: 40, align: 'right' });
+      caps('Amount', right - 80, at, { width: 80, align: 'right' });
+      rule(at + 14, NAVY, 1);
+      return at + 24;
+    };
+    y = header(y);
     // A long list gets tighter rows so a normal receipt stays on one page.
     const compact = r.lines.length > 6;
+    const FOOTER = 118;
     for (const l of r.lines) {
-      if (y > doc.page.height - 190) {
+      if (y > pageH - FOOTER - 130) {
         doc.addPage();
-        y = MARGIN;
+        y = header(MARGIN);
       }
-      const label = l.quantity > 1 ? `${l.name}  × ${l.quantity}` : l.name;
       const size = compact ? 10 : 11.5;
       doc.font('regular').fontSize(size).fillColor(INK);
-      const h = doc.heightOfString(label, { width: width - 90 });
-      doc.text(label, left, y, { width: width - 90 });
+      const h = doc.heightOfString(l.name, { width: qtyRight - 50 - left });
+      doc.text(l.name, left, y, { width: qtyRight - 50 - left });
+      doc.font('regular').fontSize(size).fillColor(MUTED).text(String(l.quantity), qtyRight - 40, y, { width: 40, align: 'right', lineBreak: false });
       money(doc, formatGHS(l.price), right, y, size, 'medium', INK);
-      y += Math.max(h, size + 2) + (compact ? 5 : 10);
+      y += Math.max(h, size + 2) + (compact ? 4 : 8);
+      rule(y - (compact ? 1 : 3), LINE, 0.4);
+      y += compact ? 3 : 5;
     }
-    rule(y);
-    y += 14;
+    y += 4;
 
+    // The totals, on the right.
     const row = (label: string, amount: string, color = MUTED, face = 'regular', size = 10.5) => {
-      doc.font(face).fontSize(size).fillColor(color).text(label, left, y, { lineBreak: false });
+      doc.font(face).fontSize(size).fillColor(color).text(label, right - 190, y, { lineBreak: false });
       money(doc, amount, right, y, size, face, color);
-      y += size + 9;
+      y += size + 8;
     };
     if (r.discount > 0) {
       row('Subtotal', formatGHS(r.subtotal));
       row('Discount', `− ${formatGHS(r.discount)}`);
       y += 2;
     }
-    doc.font('medium').fontSize(12.5).fillColor(INK).text('Total', left, y + 6, { lineBreak: false });
-    money(doc, formatGHS(r.total), right, y, 24, 'medium', NAVY);
-    y += 40;
+    doc.roundedRect(right - 190, y, 190, 40, 6).fill(NAVY);
+    doc.font('medium').fontSize(8).fillColor('#c9d6ee').text('TOTAL', right - 178, y + 16, { characterSpacing: 1.1, lineBreak: false });
+    money(doc, formatGHS(r.total), right - 12, y + 9, 21, 'medium', '#ffffff');
+    y += 40 + 12;
 
     if (!r.voided) {
       row('Paid', formatGHS(r.paid));
       if (r.balance > 0) row('Still to pay', formatGHS(r.balance), AMBER, 'medium', 12);
-      else {
-        doc.font('medium').fontSize(12).fillColor(GREEN).text('Paid in full', left, y, { lineBreak: false });
-        y += 21;
-      }
     }
 
-    doc.font('regular').fontSize(9.5).fillColor(MUTED).text('Thank you for choosing Niinas Wash', left, doc.page.height - MARGIN - 24, { width, align: 'center', lineBreak: false });
+    // The foot: a thank you, and the brand bar again. (The logo already carries the tagline.)
+    const footY = pageH - 62;
+    rule(footY, LINE, 0.6);
+    doc.font('regular').fontSize(9.5).fillColor(MUTED).text('Thank you for choosing Niinas Wash', left, footY + 12, { width, align: 'center', lineBreak: false });
+    doc.rect(0, pageH - 7, pageW, 7).fill(BLUE);
+    doc.rect(0, pageH - 7, 90, 7).fill(RED_BRAND);
     doc.end();
   });
 }

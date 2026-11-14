@@ -44,7 +44,7 @@ export async function ledgerFor(db: DbOrTx, attendantId: number, limit = PAGE): 
     .innerJoin(jobLineAttendants, eq(jobLineAttendants.id, commissions.lineAttendantId))
     .innerJoin(jobLines, eq(jobLines.id, jobLineAttendants.jobLineId))
     .innerJoin(jobs, eq(jobs.id, jobLines.jobId))
-    .innerJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
+    .leftJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
     .innerJoin(services, eq(services.id, jobLines.serviceId))
     .where(eq(jobLineAttendants.attendantId, attendantId))
     .orderBy(desc(commissions.id))

@@ -215,6 +215,16 @@
     font-weight: 700;
     letter-spacing: 0.06em;
   }
+  /* No car: same size and place as a plate, but quieter and without the GH strip. */
+  .plate-walkin {
+    padding-left: 8px;
+    border-style: dashed;
+    color: var(--color-ink-2);
+    letter-spacing: 0.01em;
+  }
+  .plate-walkin::before {
+    content: none;
+  }
   .plate-sm {
     font-size: 12px;
   }

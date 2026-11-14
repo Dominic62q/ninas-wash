@@ -24,7 +24,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     const stages = await db
       .select({ status: jobs.status, n: sql<number>`count(*)::int` })
       .from(jobs)
-      .where(today)
+      .where(and(today, eq(jobs.kind, 'wash'))) // cars only: walk-in sales are not on the board
       .groupBy(jobs.status);
     const at = (s: string) => stages.find((r) => r.status === s)?.n ?? 0;
     const cars = {

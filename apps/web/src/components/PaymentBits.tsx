@@ -167,7 +167,7 @@ export function DispatchPanel({ job, open, onClose }: { job: JobDetail; open: bo
     mutationFn: (body: unknown) => api(`/jobs/${job.id}/dispatch`, { method: 'POST', body }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      toast.success(`${job.vehicle.plate.toUpperCase()} dispatched, ${formatGHS(job.balance)} owing`);
+      toast.success(`${job.vehicle?.plate.toUpperCase() ?? (job.kind === 'sale' ? 'Sale' : 'Walk-in')} dispatched, ${formatGHS(job.balance)} owing`);
       onClose();
     },
   });

@@ -45,6 +45,8 @@ export interface ReportDto {
   /** Cars booked in the period, voided ones left out. `net` is after discounts. */
   jobs: { count: number; sales: number; discounts: number; net: number; average: number; owing: { count: number; amount: number } };
   byService: { name: string; count: number; sales: number }[];
+  /** Things sold off the shelf, on a sale or added to a car. */
+  byItem: { name: string; count: number; sales: number }[];
   byAttendant: { name: string; cars: number; earned: number }[];
   expenses: { total: number; drawer: number; other: number; withoutReceipt: number; byCategory: { category: string; amount: number; count: number }[] };
   commission: { earned: number; paidOut: number };

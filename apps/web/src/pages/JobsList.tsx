@@ -70,7 +70,7 @@ function RowStatus({ row, short }: { row: JobListRow; short?: boolean }) {
   const owes = owed(row);
   return (
     <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Mark tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Mark>
+      <Mark tone={STATUS_TONE[row.status]}>{row.kind === 'sale' ? 'Sold' : STATUS_LABEL[row.status]}</Mark>
       {owes > 0 && !short && <span className="num text-xs font-medium text-amber">Owes {formatGHS(owes)}</span>}
     </span>
   );
@@ -82,14 +82,14 @@ function People({ row }: { row: JobListRow }) {
 }
 
 function ListRow({ row }: { row: JobListRow }) {
-  const who = [row.makeModel, row.customerName].filter(Boolean).join(' · ') || 'Walk-in';
+  const who = [row.makeModel, row.customerName].filter(Boolean).join(' · ') || 'Walk-in customer';
   return (
     <li className="border-b border-line-2 last:border-b-0">
       <Link to={`/jobs/${row.id}`} className={`grid grid-cols-[minmax(0,1fr)] gap-x-4 px-4 py-3 text-ink no-underline transition-colors hover:bg-band lg:items-center ${COLS}`}>
         {/* Phone: three short lines, one kind of thing on each. The customer and car are on the job itself. */}
         <div className="min-w-0 lg:hidden">
           <div className="flex items-center gap-2">
-            <Plate plate={row.plate} size="sm" />
+            <Plate plate={row.plate} size="sm" walkIn={row.kind === 'sale' ? 'Walk-in sale' : 'Walk-in'} />
             <RowStatus row={row} short />
             <span className="num ml-auto shrink-0 font-semibold">{formatGHS(row.total)}</span>
           </div>
@@ -104,7 +104,7 @@ function ListRow({ row }: { row: JobListRow }) {
         {/* Computer: one line per column. */}
         <span className="num hidden text-sm text-ink-2 lg:block">{clock(row.createdAt)}</span>
         <span className="hidden lg:block">
-          <Plate plate={row.plate} size="sm" />
+          <Plate plate={row.plate} size="sm" walkIn={row.kind === 'sale' ? 'Walk-in sale' : 'Walk-in'} />
         </span>
         <span className="hidden truncate text-sm text-ink-2 lg:block">{who}</span>
         <span className="hidden truncate text-sm font-medium lg:block">{row.services.join(', ')}</span>

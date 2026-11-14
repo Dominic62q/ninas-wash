@@ -25,7 +25,8 @@ import { Reports } from './pages/Reports';
 import { ExpenseCategories } from './pages/ExpenseCategories';
 import { PaymentMethods } from './pages/PaymentMethods';
 import { Roles } from './pages/Roles';
-import { Services } from './pages/Services';
+import { Sell } from './pages/Sell';
+import { Items, Services } from './pages/Services';
 import { Settings } from './pages/Settings';
 import { Texts } from './pages/Texts';
 import { SignIn } from './pages/SignIn';
@@ -47,8 +48,10 @@ function RequireSignIn() {
 const SCREENS: Record<string, ReactNode> = {
   '/my-work': <MyWork />,
   '/jobs': <Jobs />,
+  '/sell': <Sell />,
   '/customers': <Customers />,
   '/services': <Services />,
+  '/items': <Items />,
   '/staff': <Staff />,
   '/commissions': <Commissions />,
   '/tips': <Tips />,

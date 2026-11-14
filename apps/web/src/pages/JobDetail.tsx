@@ -13,6 +13,7 @@ import {
   voidInput,
   type JobDetail as JobDetailDto,
   type JobHistoryEntry,
+  type ServiceKind,
 } from '@niinas/shared';
 import { Plate } from '../components/Plate';
 import { AttendantPicker, QuantityStepper, StatusPill, sharedNote, useAttendants, useServices } from '../components/JobBits';
@@ -41,6 +42,8 @@ function describe(h: JobHistoryEntry): string {
   switch (h.action) {
     case 'job.create':
       return 'Booked';
+    case 'sale.create':
+      return 'Sold to a walk-in customer';
     case 'job.status':
       return String(a.status ?? '').replace('_', ' ').replace(/^./, (c) => c.toUpperCase());
     case 'job.add_line':
@@ -106,7 +109,7 @@ function AssignPanel({ job, lineId, onClose }: { job: JobDetailDto; lineId: numb
   );
 }
 
-function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: boolean; onClose: () => void }) {
+function AddServicePanel({ job, kind, open, onClose }: { job: JobDetailDto; kind: ServiceKind; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const services = useServices();
   const attendants = useAttendants();
@@ -116,13 +119,15 @@ function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: bool
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const onJob = new Set(job.lines.map((l) => l.serviceId));
-  const options = (services.data?.services ?? []).filter((s) => !onJob.has(s.id));
+  const options = (services.data?.services ?? []).filter((s) => s.kind === kind && !onJob.has(s.id));
+  const chosen = options.find((o) => o.id === serviceId);
+  const isItem = kind === 'item';
 
   const save = useMutation({
     mutationFn: (body: unknown) => api(`/jobs/${job.id}/lines`, { method: 'POST', body }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      toast.success('Service added to the job');
+      toast.success(isItem ? 'Item added to the job' : 'Service added to the job');
       setServiceId(null);
       setIds([]);
       setQuantity(1);
@@ -131,28 +136,32 @@ function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: bool
   });
 
   function submit() {
-    if (serviceId === null) return setError('Choose a service');
-    const parsed = addLineInput.safeParse({ serviceId, quantity, attendantIds: ids });
+    if (serviceId === null) return setError(isItem ? 'Choose an item' : 'Choose a service');
+    const parsed = addLineInput.safeParse({ serviceId, quantity, attendantIds: isItem ? [] : ids });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Check the details');
     setError(null);
     save.mutate(parsed.data);
   }
 
   return (
-    <Panel open={open} onClose={onClose} title="Add a service">
-      {options.length === 0 && <p className="text-ink-3">Every service is already on this job</p>}
+    <Panel open={open} onClose={onClose} title={isItem ? 'Add an item' : 'Add a service'}>
+      {options.length === 0 && <p className="text-ink-3">{isItem ? 'There are no more items to add' : 'Every service is already on this job'}</p>}
       <div className="flex flex-col gap-2">
         {options.map((s) => (
           <button
             key={s.id}
             type="button"
             aria-pressed={serviceId === s.id}
-            onClick={() => { setServiceId(s.id); setError(null); }}
+            disabled={s.kind === 'item' && s.stock === 0}
+            onClick={() => { setServiceId(s.id); setQuantity(1); setError(null); }}
             className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 border-[1.5px] px-4 text-left ${
               serviceId === s.id ? 'border-blue bg-blue-50' : 'border-line-strong bg-surface'
             }`}
           >
-            <span className="font-medium text-ink">{s.name}</span>
+            <span className="min-w-0">
+              <span className="block font-medium text-ink">{s.name}</span>
+              {s.kind === 'item' && <span className={`block text-xs ${s.stock === 0 ? 'text-red-d' : 'text-ink-3'}`}>{s.stock === 0 ? 'Out of stock' : `${s.stock} on the shelf`}</span>}
+            </span>
             <span className="num font-semibold text-navy">{formatGHS(s.price)}</span>
           </button>
         ))}
@@ -160,11 +169,17 @@ function AddServicePanel({ job, open, onClose }: { job: JobDetailDto; open: bool
       {serviceId !== null && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <QuantityStepper label="of this service" value={quantity} onChange={setQuantity} />
-            {quantity > 1 && <span className="num text-sm text-ink-3">{quantity} × {formatGHS(options.find((o) => o.id === serviceId)?.price ?? 0)}</span>}
+            <QuantityStepper label={isItem ? 'of this item' : 'of this service'} value={quantity} onChange={setQuantity} max={isItem ? chosen?.stock : undefined} />
+            {quantity > 1 && <span className="num text-sm text-ink-3">{quantity} × {formatGHS(chosen?.price ?? 0)}</span>}
           </div>
-          <AttendantPicker label="Attendants" options={attendants.data?.attendants ?? []} value={ids} onChange={setIds} />
-          {sharedNote(ids.length) && <p className="text-xs text-ink-3">{sharedNote(ids.length)}</p>}
+          {isItem ? (
+            <p className="text-xs text-ink-3">Items are sold off the shelf, so they need no attendant and earn no commission.</p>
+          ) : (
+            <>
+              <AttendantPicker label="Attendants" options={attendants.data?.attendants ?? []} value={ids} onChange={setIds} />
+              {sharedNote(ids.length) && <p className="text-xs text-ink-3">{sharedNote(ids.length)}</p>}
+            </>
+          )}
         </div>
       )}
       <FormError message={error ?? (save.isError ? errorMessage(save.error) : null)} />
@@ -282,7 +297,7 @@ function Tracker({ status }: { status: JobDetailDto['status'] }) {
 
 type Dialog =
   | { kind: 'assign'; lineId: number }
-  | { kind: 'add' }
+  | { kind: 'add'; of: ServiceKind }
   | { kind: 'discount' }
   | { kind: 'void' }
   | { kind: 'pay' }
@@ -350,13 +365,17 @@ export function JobDetail() {
   }
 
   const open = !job.voided && (job.status === 'pending' || job.status === 'in_progress');
-  const missing = job.lines.some((l) => l.attendants.length === 0);
-  const car = [job.vehicle.makeModel, job.vehicle.carType && CAR_LABEL[job.vehicle.carType]].filter(Boolean).join(' · ');
+  const isSale = job.kind === 'sale';
+  const serviceLines = job.lines.filter((l) => l.kind === 'service');
+  const itemLines = job.lines.filter((l) => l.kind === 'item');
+  const label = job.vehicle?.plate ?? (isSale ? 'Walk-in sale' : 'Walk-in');
+  const missing = job.lines.some((l) => l.kind === 'service' && l.attendants.length === 0);
+  const car = job.vehicle ? [job.vehicle.makeModel, job.vehicle.carType && CAR_LABEL[job.vehicle.carType]].filter(Boolean).join(' · ') : '';
   const canPay = !job.voided && job.balance > 0 && can('payment.record');
   const finished = !job.voided && job.status === 'completed';
   const mayRelease = can('job.dispatch_with_balance');
   const payingNow = dialog?.kind === 'pay' && canPay;
-  const canTip = !job.voided && (job.status === 'completed' || job.status === 'dispatched') && can('tip.record');
+  const canTip = !job.voided && job.kind === 'wash' && (job.status === 'completed' || job.status === 'dispatched') && can('tip.record');
   const tipRecipients = [...new Map(job.lines.flatMap((l) => l.attendants).map((a) => [a.id, { id: a.id, name: a.name }])).values()];
   const voidingPayment = dialog?.kind === 'voidPayment' ? (job.payments.find((p) => p.id === dialog.paymentId) ?? null) : null;
 
@@ -373,10 +392,10 @@ export function JobDetail() {
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4 max-lg:flex-1">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 max-lg:rounded-[14px] max-lg:bg-surface max-lg:p-3.5 max-lg:shadow-card">
-        <h2 aria-label={`Number plate ${job.vehicle.plate}`}>
-          <Plate plate={job.vehicle.plate} size="lg" />
+        <h2 aria-label={job.vehicle ? `Number plate ${job.vehicle.plate}` : isSale ? 'Walk-in sale' : 'Walk-in customer'}>
+          <Plate plate={job.vehicle?.plate ?? null} size="lg" walkIn={isSale ? 'Walk-in sale' : 'Walk-in'} />
         </h2>
-        {job.voided ? <Pill tone="grey">Voided</Pill> : <StatusPill status={job.status} />}
+        {job.voided ? <Pill tone="grey">Voided</Pill> : isSale ? <Pill tone="green">Sold</Pill> : <StatusPill status={job.status} />}
         <p className="num ml-auto text-xs text-ink-3 sm:text-sm">{job.number}</p>
       </header>
 
@@ -386,22 +405,27 @@ export function JobDetail() {
         </p>
       )}
 
-      {!job.voided && <Tracker status={job.status} />}
+      {!job.voided && !isSale && <Tracker status={job.status} />}
 
       {open && (
         <div className="grid grid-cols-2 gap-3 sm:flex">
           {job.status === 'pending' && (
-            <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" disabled={missing} onClick={() => steps.ask('start', job.id, job.vehicle.plate)}>
+            <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" disabled={missing} onClick={() => steps.ask('start', job.id, label)}>
               Start wash
             </button>
           )}
           {job.status === 'in_progress' && (
-            <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" onClick={() => steps.ask('complete', job.id, job.vehicle.plate)}>
+            <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" onClick={() => steps.ask('complete', job.id, label)}>
               Mark complete
             </button>
           )}
-          <button type="button" className="btn sm:flex-1" onClick={() => setDialog({ kind: 'add' })}>
-            Add a service
+          {!isSale && (
+            <button type="button" className="btn sm:flex-1" onClick={() => setDialog({ kind: 'add', of: 'service' })}>
+              Add a service
+            </button>
+          )}
+          <button type="button" className="btn sm:flex-1" onClick={() => setDialog({ kind: 'add', of: 'item' })}>
+            Add an item
           </button>
           {can('job.void') && (
             <button type="button" className="btn text-red-d" onClick={() => setDialog({ kind: 'void' })}>
@@ -420,7 +444,7 @@ export function JobDetail() {
             </button>
           )}
           {finished && can('job.dispatch') && job.balance === 0 && (
-            <button type="button" className="btn btn-primary basis-full max-lg:hidden sm:flex-1 sm:basis-0" onClick={() => steps.ask('dispatch', job.id, job.vehicle.plate)}>
+            <button type="button" className="btn btn-primary basis-full max-lg:hidden sm:flex-1 sm:basis-0" onClick={() => steps.ask('dispatch', job.id, label)}>
               Dispatch car
             </button>
           )}
@@ -448,32 +472,69 @@ export function JobDetail() {
         <p className="-mt-2 text-sm font-medium text-amber">Collect {formatGHS(job.balance)} to dispatch, or ask a manager.</p>
       )}
 
-      <section aria-label="Services" className={card}>
-        <h3 className="border-b border-line px-4 py-3 text-sm font-medium text-ink-2">Services</h3>
-        <ul className="divide-y divide-line-2">
-          {job.lines.map((l) => (
-            <li key={l.id} className="flex items-start gap-3 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-ink">
-                  {l.name}
-                  {l.quantity > 1 && <span className="num font-normal text-ink-3"> × {l.quantity}</span>}
-                </p>
-                {l.attendants.length > 0 ? (
-                  <p className="text-sm text-ink-2">
-                    {l.attendants.map((a) => (l.attendants.length > 1 ? `${a.name} ${a.shareBp / 100}%` : a.name)).join(', ')}
+      <section aria-label="Services and items" className={card}>
+        {serviceLines.length > 0 && (
+          <>
+            <h3 className="border-b border-line px-4 py-3 text-sm font-medium text-ink-2">Services</h3>
+            <ul className="divide-y divide-line-2">
+            {serviceLines.map((l) => (
+              <li key={l.id} className="flex items-start gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-ink">
+                    {l.name}
+                    {l.quantity > 1 && <span className="num font-normal text-ink-3"> × {l.quantity}</span>}
                   </p>
-                ) : open ? (
-                  <button type="button" className="tap text-sm text-amber underline" onClick={() => setDialog({ kind: 'assign', lineId: l.id })}>
-                    Assign attendants
-                  </button>
-                ) : (
-                  <p className="text-sm text-ink-3">None</p>
-                )}
-              </div>
-              <p className="num font-semibold text-ink">{formatGHS(l.price)}</p>
-            </li>
-          ))}
-        </ul>
+                  {l.attendants.length > 0 ? (
+                    <p className="text-sm text-ink-2">
+                      {l.attendants.map((a) => (l.attendants.length > 1 ? `${a.name} ${a.shareBp / 100}%` : a.name)).join(', ')}
+                    </p>
+                  ) : l.kind === 'item' ? (
+                    <p className="text-sm text-ink-3">Item</p>
+                  ) : open ? (
+                    <button type="button" className="tap text-sm text-amber underline" onClick={() => setDialog({ kind: 'assign', lineId: l.id })}>
+                      Assign attendants
+                    </button>
+                  ) : (
+                    <p className="text-sm text-ink-3">None</p>
+                  )}
+                </div>
+                <p className="num font-semibold text-ink">{formatGHS(l.price)}</p>
+              </li>
+            ))}
+            </ul>
+          </>
+        )}
+        {itemLines.length > 0 && (
+          <>
+            <h3 className={`border-b border-line px-4 py-3 text-sm font-medium text-ink-2 ${serviceLines.length > 0 ? 'border-t' : ''}`}>Items</h3>
+            <ul className="divide-y divide-line-2">
+            {itemLines.map((l) => (
+              <li key={l.id} className="flex items-start gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-ink">
+                    {l.name}
+                    {l.quantity > 1 && <span className="num font-normal text-ink-3"> × {l.quantity}</span>}
+                  </p>
+                  {l.attendants.length > 0 ? (
+                    <p className="text-sm text-ink-2">
+                      {l.attendants.map((a) => (l.attendants.length > 1 ? `${a.name} ${a.shareBp / 100}%` : a.name)).join(', ')}
+                    </p>
+                  ) : l.kind === 'item' ? (
+                    <p className="text-sm text-ink-3">Item</p>
+                  ) : open ? (
+                    <button type="button" className="tap text-sm text-amber underline" onClick={() => setDialog({ kind: 'assign', lineId: l.id })}>
+                      Assign attendants
+                    </button>
+                  ) : (
+                    <p className="text-sm text-ink-3">None</p>
+                  )}
+                </div>
+                <p className="num font-semibold text-ink">{formatGHS(l.price)}</p>
+              </li>
+            ))}
+            </ul>
+          </>
+        )}
         <dl className="num flex flex-col gap-1 border-t border-line px-4 py-3 text-sm">
           {job.discount > 0 && (
             <>
@@ -581,7 +642,7 @@ export function JobDetail() {
               <p className="mt-1 text-xs text-ink-3">{plural(job.customer.visits, 'visit')}</p>
             </>
           ) : (
-            <p className="mt-1 text-ink-3">Walk-in</p>
+            <p className="mt-1 text-ink-3">Walk-in customer</p>
           )}
           {car && <p className="mt-2 text-sm text-ink-2">{car}</p>}
           {job.notes && <p className="mt-2 border-t border-line-2 pt-2 text-sm text-ink">Note: {job.notes}</p>}
@@ -606,7 +667,7 @@ export function JobDetail() {
       {/* Phone: the next step sits at the bottom, where a thumb reaches. Steps that cannot be undone are slid to confirm. */}
       {slide ? (
         <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-auto flex rounded-t-[18px] bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(7,31,71,0.14)] lg:hidden">
-          <SlideToConfirm label={slide.label} busy={steps.busy} disabled={slide.disabled} onConfirm={() => steps.now(slide.step, job.id, job.vehicle.plate)} />
+          <SlideToConfirm label={slide.label} busy={steps.busy} disabled={slide.disabled} onConfirm={() => steps.now(slide.step, job.id, label)} />
         </div>
       ) : (
         finished &&
@@ -620,14 +681,14 @@ export function JobDetail() {
       )}
 
       <AssignPanel key={dialog?.kind === 'assign' ? dialog.lineId : 'none'} job={job} lineId={dialog?.kind === 'assign' ? dialog.lineId : null} onClose={close} />
-      <AddServicePanel key={`add-${job.lines.length}`} job={job} open={dialog?.kind === 'add'} onClose={close} />
+      <AddServicePanel key={`add-${job.lines.length}-${dialog?.kind === 'add' ? dialog.of : ''}`} job={job} kind={dialog?.kind === 'add' ? dialog.of : 'service'} open={dialog?.kind === 'add'} onClose={close} />
       <DiscountPanel key={`discount-${job.discount}`} job={job} open={dialog?.kind === 'discount'} onClose={close} />
       <VoidPanel job={job} open={dialog?.kind === 'void'} onClose={close} />
       <PayPanel key={`pay-${job.paid}-${job.total}`} job={job} open={payingNow} onClose={close} />
       <VoidPaymentPanel key={`voidpay-${dialog?.kind === 'voidPayment' ? dialog.paymentId : 'none'}`} job={job} payment={voidingPayment} onClose={close} />
       <DispatchPanel job={job} open={dialog?.kind === 'dispatch'} onClose={close} />
       {steps.dialog}
-      {canTip && <TipPanel open={dialog?.kind === 'tip'} onClose={close} attendants={tipRecipients} job={{ id: job.id, plate: job.vehicle.plate }} />}
+      {canTip && <TipPanel open={dialog?.kind === 'tip'} onClose={close} attendants={tipRecipients} job={{ id: job.id, plate: label }} />}
     </div>
   );
 }

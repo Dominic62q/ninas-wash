@@ -17,7 +17,7 @@ export interface NavItem {
   group: 'Daily' | 'Money' | 'Setup';
 }
 
-export type IconName = 'home' | 'jobs' | 'users' | 'receipt' | 'coin' | 'lock' | 'chart' | 'tag' | 'staff' | 'chat' | 'more' | 'history' | 'settings';
+export type IconName = 'home' | 'jobs' | 'cart' | 'users' | 'receipt' | 'coin' | 'lock' | 'chart' | 'tag' | 'staff' | 'chat' | 'more' | 'history' | 'settings';
 
 /** The last build phase whose screens are finished. */
 export const BUILT_PHASE = 9;
@@ -28,6 +28,8 @@ export const NAV: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: 'home', needs: 'dashboard.view', phase: 0, group: 'Daily' },
   { path: '/my-work', label: 'My work', icon: 'coin', needs: 'self.view', attendantOnly: true, phase: 9, group: 'Daily' },
   { path: '/jobs', label: 'Jobs', icon: 'jobs', needs: 'job.create', phase: 2, group: 'Daily' },
+  // On a phone this opens from the Jobs tab.
+  { path: '/sell', label: 'Sell items', icon: 'cart', needs: 'job.create', phase: 9, group: 'Daily' },
   { path: '/customers', label: 'Customers', icon: 'users', needs: 'customer.manage', phase: 1, group: 'Daily' },
   { path: '/expenses', label: 'Expenses', icon: 'receipt', needs: 'expense.create', phase: 5, group: 'Money' },
   { path: '/commissions', label: 'Commissions', icon: 'coin', needs: 'commission.view', phase: 4, group: 'Money' },
@@ -42,7 +44,8 @@ export const NAV: NavItem[] = [
     phase: 9,
     group: 'Setup',
   },
-  { path: '/services', label: 'Services', icon: 'tag', needs: 'service.manage', phase: 1, group: 'Setup', inSettings: { section: 'Business', blurb: 'What you sell, its price and the commission it earns' } },
+  { path: '/services', label: 'Services', icon: 'tag', needs: 'service.manage', phase: 1, group: 'Setup', inSettings: { section: 'Business', blurb: 'The washes you offer, their price and the commission they earn' } },
+  { path: '/items', label: 'Items for sale', icon: 'tag', needs: 'service.manage', phase: 9, group: 'Setup', inSettings: { section: 'Business', blurb: 'Dusters, car shine, drinks: what you sell off the shelf, and its stock' } },
   { path: '/payment-methods', label: 'Payment methods', icon: 'coin', needs: 'settings.manage', phase: 9, group: 'Setup', inSettings: { section: 'Business', blurb: 'Cash, MoMo and any other way money is paid' } },
   { path: '/expense-categories', label: 'Expense categories', icon: 'receipt', needs: 'settings.manage', phase: 9, group: 'Setup', inSettings: { section: 'Business', blurb: 'What money can be spent on, and which ones ask for a note' } },
   { path: '/staff', label: 'Staff and users', icon: 'staff', needs: 'user.reset_password', phase: 1, group: 'Setup', inSettings: { section: 'People', blurb: 'Attendants, and who can sign in' } },

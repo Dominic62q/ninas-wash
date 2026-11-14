@@ -96,7 +96,7 @@ export function Tips() {
     { value: '', label: 'Not for one car' },
     ...(cars.data?.jobs ?? [])
       .filter((j) => !j.voided && (j.status === 'completed' || j.status === 'dispatched'))
-      .map((j) => ({ value: String(j.id), label: `${j.plate.toUpperCase()} · ${j.services.join(', ')}` })),
+      .map((j) => ({ value: String(j.id), label: `${j.plate?.toUpperCase() ?? (j.kind === 'sale' ? 'Walk-in sale' : 'Walk-in')} · ${j.services.join(', ')}` })),
   ];
 
   const data = tips.data;

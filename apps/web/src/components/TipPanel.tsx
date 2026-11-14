@@ -62,7 +62,7 @@ export function TipPanel({ open, onClose, attendants, job, jobOptions }: TipTarg
     <Panel open={open} onClose={onClose} title="Add a tip">
       {job && (
         <p className="text-ink-2">
-          For <strong className="text-ink">{job.plate.toUpperCase()}</strong>
+          For <strong className="text-ink">{job.plate?.toUpperCase() ?? 'Walk-in customer'}</strong>
         </p>
       )}
       {attendants.length === 1 ? (

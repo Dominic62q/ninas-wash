@@ -216,6 +216,18 @@ function sections(r: ReportDto): Section[] {
           rows: r.byService,
           foot: ['Total', sum(r.byService, (s) => s.count), sum(r.byService, (s) => s.sales)],
         }),
+        part({
+          label: 'Items sold',
+          empty: 'No items sold in this period',
+          rowKey: (s) => s.name,
+          cols: [
+            { head: 'Item', value: (s) => s.name },
+            { head: 'Sold', num: true, value: (s) => s.count },
+            { head: 'Amount', num: true, money: true, value: (s) => s.sales },
+          ],
+          rows: r.byItem,
+          foot: ['Total', sum(r.byItem, (s) => s.count), sum(r.byItem, (s) => s.sales)],
+        }),
       ],
     },
     {

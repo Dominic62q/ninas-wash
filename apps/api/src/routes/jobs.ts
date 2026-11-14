@@ -13,6 +13,7 @@ import {
   normalizePlate,
   paymentInput,
   referenceProblem,
+  saleInput,
   splitEvenly,
   statusInput,
   voidInput,
@@ -30,6 +31,7 @@ import { HttpError, conflict, notFound } from '../lib/errors.js';
 import { isUniqueViolation } from '../lib/helpers.js';
 import { activeMethod } from '../lib/methods.js';
 import { idParams } from '../lib/params.js';
+import { moveStock, returnJobStock } from '../lib/stock.js';
 import { buildRows } from './customers.js';
 
 const ONE_WHOLE_LINE = 10_000; // basis points
@@ -48,14 +50,14 @@ export async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null>
   const [row] = await db
     .select({ job: jobs, vehicle: vehicles, creator: users.name })
     .from(jobs)
-    .innerJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
+    .leftJoin(vehicles, eq(vehicles.id, jobs.vehicleId)) // a walk-in sale has no car
     .innerJoin(users, eq(users.id, jobs.createdBy))
     .where(eq(jobs.id, id));
   if (!row) return null;
   const { job, vehicle } = row;
 
   const lineRows = await db
-    .select({ line: jobLines, name: services.name })
+    .select({ line: jobLines, name: services.name, kind: services.kind })
     .from(jobLines)
     .innerJoin(services, eq(services.id, jobLines.serviceId))
     .where(eq(jobLines.jobId, id))
@@ -76,7 +78,7 @@ export async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null>
       and id <= ${id}`);
   const number = `J-${job.createdAt.toISOString().slice(0, 10).replace(/-/g, '')}-${String(counted.rows[0]?.n ?? 0).padStart(3, '0')}`;
 
-  const [owner] = vehicle.customerId ? await db.select().from(customers).where(eq(customers.id, vehicle.customerId)) : [];
+  const [owner] = vehicle?.customerId ? await db.select().from(customers).where(eq(customers.id, vehicle.customerId)) : [];
   const [customer] = owner ? await buildRows(db, [owner]) : [];
 
   const [voider] = job.voidedBy ? await db.select({ name: users.name }).from(users).where(eq(users.id, job.voidedBy)) : [];
@@ -114,10 +116,11 @@ export async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null>
     )
     .orderBy(asc(auditLogs.id));
 
-  const lines = lineRows.map(({ line, name }) => ({
+  const lines = lineRows.map(({ line, name, kind }) => ({
     id: line.id,
     serviceId: line.serviceId,
     name,
+    kind,
     quantity: line.quantity,
     price: line.priceAtSale,
     attendants: workers.filter((w) => w.lineId === line.id).map(({ id: attendantId, name: n, shareBp }) => ({ id: attendantId, name: n, shareBp })),
@@ -128,8 +131,9 @@ export async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null>
   return {
     id: job.id,
     number,
+    kind: job.kind,
     status: job.status,
-    vehicle: { id: vehicle.id, plate: vehicle.plate, makeModel: vehicle.makeModel, carType: vehicle.carType },
+    vehicle: vehicle ? { id: vehicle.id, plate: vehicle.plate, makeModel: vehicle.makeModel, carType: vehicle.carType } : null,
     customer: customer ?? null,
     createdBy: row.creator,
     createdAt: job.createdAt.toISOString(),
@@ -184,8 +188,15 @@ async function activeAttendants(tx: DbOrTx, ids: number[]) {
   return new Map(rows.map((a) => [a.id, a]));
 }
 
-/** Copies the price and commission rule onto the line, and splits it equally between the people on it. */
-async function insertLine(tx: DbOrTx, jobId: number, service: typeof services.$inferSelect, quantity: number, attendantIds: number[]) {
+/**
+ * Copies the price and commission rule onto the line, and splits it equally between the people on it.
+ * An item has nobody on it, and comes off the shelf now (failing if there are not enough).
+ */
+async function insertLine(tx: DbOrTx, jobId: number, service: typeof services.$inferSelect, quantity: number, attendantIds: number[], by: number) {
+  if (service.kind === 'item') {
+    if (attendantIds.length > 0) throw new HttpError(400, 'item_no_attendants', `${service.name} is an item, so nobody is put on it.`);
+    await moveStock(tx, { serviceId: service.id, change: -quantity, reason: 'sale', jobId, by });
+  }
   const [line] = await tx
     .insert(jobLines)
     .values({
@@ -210,6 +221,7 @@ async function insertShares(tx: DbOrTx, lineId: number, attendantIds: number[]) 
 async function linesWithoutAttendants(tx: DbOrTx, jobId: number): Promise<number> {
   const result = await tx.execute<{ n: number }>(sql`
     select count(*)::int as n from job_lines jl
+    join services s on s.id = jl.service_id and s.kind = 'service'
     where jl.job_id = ${jobId} and not exists (select 1 from job_line_attendants a where a.job_line_id = jl.id)`);
   return result.rows[0]?.n ?? 0;
 }
@@ -237,7 +249,7 @@ const tooHigh = () => new HttpError(400, 'discount_too_high', 'The discount cann
 
 interface CardSource {
   job: typeof jobs.$inferSelect;
-  vehicle: typeof vehicles.$inferSelect;
+  vehicle: typeof vehicles.$inferSelect | null;
   customerName: string | null;
   total: number;
   paid: number;
@@ -248,7 +260,7 @@ async function cardsFor(db: DbOrTx, rows: CardSource[]): Promise<JobListRow[]> {
   const ids = rows.map((r) => r.job.id);
   const lineRows = ids.length
     ? await db
-        .select({ id: jobLines.id, jobId: jobLines.jobId, service: services.name, quantity: jobLines.quantity })
+        .select({ id: jobLines.id, jobId: jobLines.jobId, service: services.name, kind: services.kind, quantity: jobLines.quantity })
         .from(jobLines)
         .innerJoin(services, eq(services.id, jobLines.serviceId))
         .where(inArray(jobLines.jobId, ids))
@@ -269,15 +281,16 @@ async function cardsFor(db: DbOrTx, rows: CardSource[]): Promise<JobListRow[]> {
     let missing = false;
     for (const line of mine) {
       const people = workers.filter((w) => w.lineId === line.id);
-      if (people.length === 0) missing = true;
+      if (people.length === 0 && line.kind === 'service') missing = true; // items never have attendants
       for (const p of people) names.add(p.name);
     }
     return {
       id: job.id,
+      kind: job.kind,
       status: job.status,
-      plate: vehicle.plate,
-      makeModel: vehicle.makeModel,
-      carType: vehicle.carType,
+      plate: vehicle?.plate ?? null,
+      makeModel: vehicle?.makeModel ?? null,
+      carType: vehicle?.carType ?? null,
       customerName,
       createdAt: job.createdAt.toISOString(),
       startedAt: iso(job.startedAt),
@@ -324,11 +337,12 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
     const rows = await app.db
       .select({ job: jobs, vehicle: vehicles, customerName: customers.name, total: jobTotal, paid: jobPaid })
       .from(jobs)
-      .innerJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
+      .leftJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
       .leftJoin(customers, eq(customers.id, vehicles.customerId))
       .where(
         and(
           isNull(jobs.voidedAt),
+          eq(jobs.kind, 'wash'), // the board is cars; walk-in sales are in the job history
           date
             ? and(gte(jobs.createdAt, new Date(`${date}T00:00:00Z`)), lt(jobs.createdAt, new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000)))
             : or(ne(jobs.status, 'dispatched'), gte(jobs.createdAt, startOfToday)),
@@ -367,7 +381,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
     const rows = await app.db
       .select({ job: jobs, vehicle: vehicles, customerName: customers.name, total: jobTotal, paid: jobPaid })
       .from(jobs)
-      .innerJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
+      .leftJoin(vehicles, eq(vehicles.id, jobs.vehicleId)) // walk-in sales have no car
       .leftJoin(customers, eq(customers.id, vehicles.customerId))
       .where(where)
       .orderBy(desc(jobs.createdAt), desc(jobs.id))
@@ -377,7 +391,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
     const [totals] = await app.db
       .select({ n: sql<number>`count(*)::int`, sum: sql<number>`coalesce(sum(${jobTotal}), 0)::int` })
       .from(jobs)
-      .innerJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
+      .leftJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
       .leftJoin(customers, eq(customers.id, vehicles.customerId))
       .where(where);
 
@@ -403,53 +417,59 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
 
         const subtotal = input.lines.reduce((sum, l) => sum + serviceById.get(l.serviceId)!.price * l.quantity, 0);
         if (input.discount > subtotal) throw tooHigh();
-        if (input.start && input.lines.some((l) => l.attendantIds.length === 0)) throw needsAttendant();
+        if (input.start && input.lines.some((l) => l.attendantIds.length === 0 && serviceById.get(l.serviceId)!.kind === 'service')) {
+          throw needsAttendant();
+        }
 
         // The car: found by plate, or added now. A car can only be on the board once at a time.
-        const [found] = await tx.select().from(vehicles).where(eq(vehicles.plateKey, plateKey)).for('update');
-        let vehicle = found;
-        if (vehicle) {
-          const [open] = await tx
-            .select({ id: jobs.id })
-            .from(jobs)
-            .where(and(eq(jobs.vehicleId, vehicle.id), isNull(jobs.voidedAt), inArray(jobs.status, ['pending', 'in_progress'])))
-            .limit(1);
-          if (open) throw conflict('vehicle_has_open_job', 'That car already has a job on the board.');
-        }
+        // A walk-in customer has no plate, so there is no car and no owner to save.
+        let vehicle: typeof vehicles.$inferSelect | undefined;
+        if (!input.walkIn) {
+          const [found] = await tx.select().from(vehicles).where(eq(vehicles.plateKey, plateKey)).for('update');
+          vehicle = found;
+          if (vehicle) {
+            const [open] = await tx
+              .select({ id: jobs.id })
+              .from(jobs)
+              .where(and(eq(jobs.vehicleId, vehicle.id), isNull(jobs.voidedAt), inArray(jobs.status, ['pending', 'in_progress'])))
+              .limit(1);
+            if (open) throw conflict('vehicle_has_open_job', 'That car already has a job on the board.');
+          }
 
-        let customerId = vehicle?.customerId ?? null;
-        if (!customerId && input.customer) {
-          const [created] = await tx.insert(customers).values(input.customer).returning();
-          customerId = created!.id;
-          await writeAudit(tx, { ...actor, action: 'customer.create', recordTable: 'customers', recordId: customerId, after: input.customer });
-        }
+          let customerId = vehicle?.customerId ?? null;
+          if (!customerId && input.customer) {
+            const [created] = await tx.insert(customers).values(input.customer).returning();
+            customerId = created!.id;
+            await writeAudit(tx, { ...actor, action: 'customer.create', recordTable: 'customers', recordId: customerId, after: input.customer });
+          }
 
-        if (!vehicle) {
-          [vehicle] = await tx
-            .insert(vehicles)
-            .values({ plate: input.plate, plateKey, customerId, makeModel: input.makeModel, carType: input.carType })
-            .returning();
-          await writeAudit(tx, {
-            ...actor,
-            action: 'vehicle.create',
-            recordTable: 'vehicles',
-            recordId: vehicle!.id,
-            after: { plate: input.plate, customerId, makeModel: input.makeModel, carType: input.carType },
-          });
-        } else if (customerId !== vehicle.customerId || (!vehicle.makeModel && input.makeModel) || (!vehicle.carType && input.carType)) {
-          // A walk-in car that now has an owner, or details we did not have before.
-          [vehicle] = await tx
-            .update(vehicles)
-            .set({ customerId, makeModel: vehicle.makeModel ?? input.makeModel, carType: vehicle.carType ?? input.carType })
-            .where(eq(vehicles.id, vehicle.id))
-            .returning();
+          if (!vehicle) {
+            [vehicle] = await tx
+              .insert(vehicles)
+              .values({ plate: input.plate, plateKey, customerId, makeModel: input.makeModel, carType: input.carType })
+              .returning();
+            await writeAudit(tx, {
+              ...actor,
+              action: 'vehicle.create',
+              recordTable: 'vehicles',
+              recordId: vehicle!.id,
+              after: { plate: input.plate, customerId, makeModel: input.makeModel, carType: input.carType },
+            });
+          } else if (customerId !== vehicle.customerId || (!vehicle.makeModel && input.makeModel) || (!vehicle.carType && input.carType)) {
+            // A walk-in car that now has an owner, or details we did not have before.
+            [vehicle] = await tx
+              .update(vehicles)
+              .set({ customerId, makeModel: vehicle.makeModel ?? input.makeModel, carType: vehicle.carType ?? input.carType })
+              .where(eq(vehicles.id, vehicle.id))
+              .returning();
+          }
         }
 
         const now = new Date();
         const [job] = await tx
           .insert(jobs)
           .values({
-            vehicleId: vehicle!.id,
+            vehicleId: vehicle?.id ?? null,
             createdBy: actor.userId,
             discount: input.discount,
             notes: input.notes,
@@ -457,7 +477,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
           })
           .returning();
 
-        for (const l of input.lines) await insertLine(tx, job!.id, serviceById.get(l.serviceId)!, l.quantity, l.attendantIds);
+        for (const l of input.lines) await insertLine(tx, job!.id, serviceById.get(l.serviceId)!, l.quantity, l.attendantIds, actor.userId);
 
         await writeAudit(tx, {
           ...actor,
@@ -465,7 +485,8 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
           recordTable: 'jobs',
           recordId: job!.id,
           after: {
-            plate: vehicle!.plate,
+            plate: vehicle?.plate ?? null,
+            walkIn: input.walkIn || undefined,
             services: input.lines.map((l) => ({
               service: serviceById.get(l.serviceId)!.name,
               quantity: l.quantity,
@@ -490,6 +511,75 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // A walk-in sale over the counter: items off the shelf, no car, paid in full on the spot. It is saved as a job of
+  // kind 'sale' that is already handed over, so the daily close, reports and receipts count it like any other job.
+  app.post('/sales', work, async (req, reply) => {
+    if (!can(req.user!.permissions, 'payment.record')) throw new HttpError(403, 'forbidden', 'You are not allowed to take payments.');
+    const input = saleInput.parse(req.body);
+    const actor = { userId: req.user!.id, ip: req.ip };
+    const keyOf = (i: number) => `${input.idemKey}:${i}`;
+
+    const jobId = await app.db.transaction(async (tx) => {
+      // The same sale sent twice (a double tap, a retry) saves once.
+      const [again] = await tx.select({ jobId: payments.jobId }).from(payments).where(eq(payments.idemKey, keyOf(0)));
+      if (again) return again.jobId;
+
+      await assertDayOpen(tx, dayOf());
+      const items = await activeServices(tx, input.lines.map((l) => l.serviceId));
+      const notItem = [...items.values()].find((s) => s.kind !== 'item');
+      if (notItem) throw new HttpError(400, 'not_an_item', `${notItem.name} is a service. Book it as a job on the board.`);
+
+      const total = input.lines.reduce((sum, l) => sum + items.get(l.serviceId)!.price * l.quantity, 0);
+      const paying = input.payments.reduce((sum, p) => sum + p.amount, 0);
+      if (total === 0) throw new HttpError(400, 'nothing_to_pay', 'These items cost nothing, so there is nothing to sell.');
+      if (paying !== total) {
+        throw new HttpError(400, 'wrong_amount', `The payments come to ${formatGHS(paying)}, but the items come to ${formatGHS(total)}.`);
+      }
+      const methods = [];
+      for (const p of input.payments) {
+        const method = await activeMethod(tx, p.methodId);
+        const missing = referenceProblem(method, p.reference);
+        if (missing) throw new HttpError(400, 'reference_needed', missing);
+        methods.push(method);
+      }
+
+      const now = new Date();
+      const [job] = await tx
+        .insert(jobs)
+        .values({ kind: 'sale', vehicleId: null, createdBy: actor.userId, status: 'dispatched', startedAt: now, completedAt: now, dispatchedAt: now })
+        .returning();
+      for (const l of input.lines) await insertLine(tx, job!.id, items.get(l.serviceId)!, l.quantity, [], actor.userId);
+
+      for (const [i, p] of input.payments.entries()) {
+        const [row] = await tx
+          .insert(payments)
+          .values({ jobId: job!.id, methodId: p.methodId, amount: p.amount, reference: p.reference, idemKey: keyOf(i), recordedBy: actor.userId })
+          .returning();
+        await writeAudit(tx, {
+          ...actor,
+          action: 'payment.record',
+          recordTable: 'payments',
+          recordId: row!.id,
+          after: { method: methods[i]!.name, amount: p.amount, reference: p.reference },
+        });
+      }
+
+      await writeAudit(tx, {
+        ...actor,
+        action: 'sale.create',
+        recordTable: 'jobs',
+        recordId: job!.id,
+        after: {
+          customer: 'Walk-in',
+          items: input.lines.map((l) => ({ item: items.get(l.serviceId)!.name, quantity: l.quantity, price: items.get(l.serviceId)!.price * l.quantity })),
+          total,
+        },
+      });
+      return job!.id;
+    });
+    return reply.status(201).send({ job: await loadJob(app.db, jobId) });
+  });
+
   // Add another service to a job that is still being worked on. Lines are never removed: fix a mistake by voiding the job.
   app.post('/:id/lines', work, async (req, reply) => {
     const { id } = idParams.parse(req.params);
@@ -510,7 +600,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       if (dup) throw conflict('duplicate_line', 'That service is already on this job.');
 
       const service = serviceById.get(input.serviceId)!;
-      await insertLine(tx, id, service, input.quantity, input.attendantIds);
+      await insertLine(tx, id, service, input.quantity, input.attendantIds, req.user!.id);
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'job.add_line',
@@ -532,11 +622,12 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const job = await lockJob(tx, id);
       if (job.status === 'dispatched') throw conflict('job_closed', 'This job has been handed over.');
       const [line] = await tx
-        .select({ line: jobLines, name: services.name })
+        .select({ line: jobLines, name: services.name, kind: services.kind })
         .from(jobLines)
         .innerJoin(services, eq(services.id, jobLines.serviceId))
         .where(and(eq(jobLines.id, lineId), eq(jobLines.jobId, id)));
       if (!line) throw notFound('That service on this job');
+      if (line.kind === 'item') throw new HttpError(400, 'item_no_attendants', `${line.name} is an item, so nobody is put on it.`);
       const [existing] = await tx.select({ id: jobLineAttendants.id }).from(jobLineAttendants).where(eq(jobLineAttendants.jobLineId, lineId)).limit(1);
       if (existing) {
         throw conflict('already_assigned', 'Attendants are already set. To change them, void the job and enter it again.');
@@ -735,6 +826,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       if ((paid?.n ?? 0) > 0) throw conflict('has_payments', 'This job has payments. Void the payments first.');
       await tx.update(jobs).set({ voidedAt: new Date(), voidedBy: req.user!.id, voidReason: reason }).where(eq(jobs.id, id));
       await reverseCommissions(tx, id);
+      await returnJobStock(tx, id, req.user!.id);
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'job.void',

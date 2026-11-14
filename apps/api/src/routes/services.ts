@@ -1,10 +1,11 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { can, serviceInput, serviceUpdate, type ChangeEntry, type ServiceDto } from '@niinas/shared';
-import { auditLogs, jobLines, jobs, services, users } from '../db/schema.js';
+import { can, serviceCreate, serviceInput, serviceUpdate, stockInput, type ChangeEntry, type ServiceDto, type StockMoveDto } from '@niinas/shared';
+import { auditLogs, jobLines, jobs, services, stockMoves, users } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
-import { conflict, notFound } from '../lib/errors.js';
+import { HttpError, conflict, notFound } from '../lib/errors.js';
+import { moveStock } from '../lib/stock.js';
 import { changedFields, isUniqueViolation } from '../lib/helpers.js';
 import { idParams } from '../lib/params.js';
 
@@ -19,6 +20,8 @@ type Row = typeof services.$inferSelect;
 const toDto = (row: Row, sold = 0): ServiceDto => ({
   id: row.id,
   name: row.name,
+  kind: row.kind,
+  stock: row.stock,
   price: row.price,
   commissionKind: row.commissionKind,
   commissionValue: row.commissionValue,
@@ -52,7 +55,7 @@ export const serviceRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/', { preHandler: app.requirePermission('service.manage') }, async (req, reply) => {
-    const input = serviceInput.parse(req.body);
+    const { openingStock, ...input } = serviceCreate.parse(req.body);
     try {
       const created = await app.db.transaction(async (tx) => {
         const [row] = await tx.insert(services).values(input).returning();
@@ -64,6 +67,21 @@ export const serviceRoutes: FastifyPluginAsync = async (app) => {
           after: input,
           ip: req.ip,
         });
+        // What is on the shelf to begin with is the item's first delivery, so the stock history starts true.
+        if (openingStock > 0) {
+          const after = await moveStock(tx, { serviceId: row!.id, change: openingStock, reason: 'delivery', note: 'Opening stock', by: req.user!.id });
+          await writeAudit(tx, {
+            userId: req.user!.id,
+            action: 'stock.delivery',
+            recordTable: 'services',
+            recordId: row!.id,
+            before: { stock: 0 },
+            after: { stock: after },
+            note: 'Opening stock',
+            ip: req.ip,
+          });
+          return { ...row!, stock: after };
+        }
         return row!;
       });
       return reply.status(201).send({ service: toDto(created) });
@@ -83,8 +101,8 @@ export const serviceRoutes: FastifyPluginAsync = async (app) => {
         const [current] = await tx.select().from(services).where(eq(services.id, id)).for('update');
         if (!current) throw notFound('That service');
 
-        // Check the whole service as it would be after the change, not just the changed field.
-        const merged = serviceInput.parse({ ...editable(current), ...patch });
+        // Check the whole service as it would be after the change, not just the changed field. Whether it is an item never changes.
+        const { kind: _kind, ...merged } = serviceInput.parse({ ...editable(current), kind: current.kind, ...patch });
         const diff = changedFields(editable(current), merged);
         if (!diff) return { service: toDto(current) };
 
@@ -140,5 +158,56 @@ export const serviceRoutes: FastifyPluginAsync = async (app) => {
       };
     });
     return { history };
+  });
+
+  // Stock in: a delivery adds to the shelf; a count sets it to what is really there, with a reason.
+  app.post('/:id/stock', { preHandler: app.requirePermission('service.manage') }, async (req) => {
+    const { id } = idParams.parse(req.params);
+    const input = stockInput.parse(req.body);
+
+    return app.db.transaction(async (tx) => {
+      const [item] = await tx.select().from(services).where(eq(services.id, id)).for('update');
+      if (!item) throw notFound('That item');
+      if (item.kind !== 'item') throw new HttpError(400, 'not_an_item', `${item.name} is a service, so it has no stock.`);
+
+      const change = input.reason === 'delivery' ? input.quantity : input.count - item.stock;
+      if (change === 0) throw new HttpError(400, 'no_change', `The shelf already has ${item.stock} ${item.name}.`);
+      const after = await moveStock(tx, { serviceId: id, change, reason: input.reason, note: input.note, by: req.user!.id });
+      await writeAudit(tx, {
+        userId: req.user!.id,
+        action: input.reason === 'delivery' ? 'stock.delivery' : 'stock.count',
+        recordTable: 'services',
+        recordId: id,
+        before: { stock: item.stock },
+        after: { stock: after },
+        note: input.note ?? undefined,
+        ip: req.ip,
+      });
+      const [row] = await tx.select({ service: services, sold: sold7d }).from(services).where(eq(services.id, id));
+      return { service: toDto(row!.service, row!.sold) };
+    });
+  });
+
+  // Every change to an item's stock, newest first.
+  app.get('/:id/stock', { preHandler: app.requirePermission('service.manage') }, async (req) => {
+    const { id } = idParams.parse(req.params);
+    const rows = await app.db
+      .select({ move: stockMoves, by: users.name })
+      .from(stockMoves)
+      .innerJoin(users, eq(users.id, stockMoves.by))
+      .where(eq(stockMoves.serviceId, id))
+      .orderBy(desc(stockMoves.id))
+      .limit(100);
+    const moves: StockMoveDto[] = rows.map(({ move, by }) => ({
+      id: move.id,
+      at: move.createdAt.toISOString(),
+      change: move.change,
+      reason: move.reason,
+      after: move.after,
+      note: move.note,
+      by,
+      jobId: move.jobId,
+    }));
+    return { moves };
   });
 };

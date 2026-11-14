@@ -49,20 +49,24 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
                coalesce((select sum(price_at_sale) from job_lines where job_id = j.id), 0) as total,
                coalesce((select sum(amount) from payments where job_id = j.id and voided_at is null), 0) as paid
         from jobs j
-        where j.voided_at is null and j.created_at >= ${lo}::timestamptz and j.created_at < ${hi}::timestamptz
+        where j.voided_at is null and j.kind = 'wash' and j.created_at >= ${lo}::timestamptz and j.created_at < ${hi}::timestamptz
       ) t`);
     const count = jobRow?.count ?? 0;
     const sales = jobRow?.sales ?? 0;
     const net = jobRow?.net ?? 0;
 
-    const byService = await q<{ name: string; count: number; sales: number }>(sql`
+    // Washing services and things sold off the shelf are reported apart.
+    const byKind = (kind: 'service' | 'item') =>
+      q<{ name: string; count: number; sales: number }>(sql`
       select s.name, coalesce(sum(l.quantity), 0)::int as count, coalesce(sum(l.price_at_sale), 0)::int as sales
       from job_lines l
       join jobs j on j.id = l.job_id
       join services s on s.id = l.service_id
-      where j.voided_at is null and j.created_at >= ${lo}::timestamptz and j.created_at < ${hi}::timestamptz
+      where s.kind = ${kind} and j.voided_at is null and j.created_at >= ${lo}::timestamptz and j.created_at < ${hi}::timestamptz
       group by s.id, s.name
       order by sales desc, s.name`);
+    const byService = await byKind('service');
+    const byItem = await byKind('item');
 
     const byAttendant = await q<{ name: string; cars: number; earned: number }>(sql`
       select a.name, count(distinct l.job_id)::int as cars, coalesce(sum(c.amount), 0)::int as earned
@@ -138,6 +142,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
         owing: { count: jobRow?.owing_count ?? 0, amount: jobRow?.owing_amount ?? 0 },
       },
       byService,
+      byItem,
       byAttendant,
       expenses,
       commission,

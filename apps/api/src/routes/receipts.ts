@@ -54,7 +54,7 @@ export const receiptRoutes: FastifyPluginAsync = async (app) => {
     return {
       number: job.number,
       at: job.createdAt,
-      plate: job.vehicle.plate,
+      plate: job.vehicle?.plate ?? null,
       status: job.status,
       voided: job.voided !== null,
       lines: job.lines.map((l) => ({ name: l.name, quantity: l.quantity, price: l.price })),

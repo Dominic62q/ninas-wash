@@ -24,8 +24,12 @@ export const jobLineInput = z.object({
 });
 export type JobLineInput = z.infer<typeof jobLineInput>;
 
-export const createJobInput = z.object({
-  plate: plateField,
+export const createJobInput = z
+  .object({
+  /** Required unless this is a walk-in customer, who has no number plate to give. */
+  plate: z.string().trim().max(20).default(''),
+  /** A walk-in customer: no plate, no car on file, no owner to save. */
+  walkIn: z.boolean().default(false),
   /** Only used when the car is new to us (or has no make or type saved yet). */
   makeModel: z.string().trim().max(60).nullish().transform((v) => v || null),
   carType: z.enum(CAR_TYPES).nullish().transform((v) => v ?? null),
@@ -46,10 +50,45 @@ export const createJobInput = z.object({
   notes: z.string().trim().max(300).nullish().transform((v) => v || null),
   /** "Save and start wash" (true) or "Save as pending" (false). */
   start: z.boolean().default(false),
-});
+})
+  .superRefine((v, ctx) => {
+    if (v.walkIn) return;
+    const r = plateField.safeParse(v.plate);
+    if (!r.success) ctx.addIssue({ code: 'custom', path: ['plate'], message: r.error.issues[0]?.message ?? 'Enter the number plate' });
+  });
 export type CreateJobInput = z.infer<typeof createJobInput>;
 
 export const addLineInput = jobLineInput;
+
+/** One item on a walk-in sale. */
+export const saleLineInput = z.object({
+  serviceId: id,
+  quantity: z.number().int('Use a whole number').min(1, 'At least 1').max(MAX_LINE_QUANTITY, `Up to ${MAX_LINE_QUANTITY}`),
+});
+
+/**
+ * A walk-in sale over the counter: items only, no car, paid in full there and then.
+ * Part cash and part MoMo is two payments. The same key twice saves once.
+ */
+export const saleInput = z.object({
+  lines: z
+    .array(saleLineInput)
+    .min(1, 'Add at least one item')
+    .max(20)
+    .refine((lines) => new Set(lines.map((l) => l.serviceId)).size === lines.length, 'Each item can be added once'),
+  payments: z
+    .array(
+      z.object({
+        methodId: z.number().int().positive('Pick how it was paid'),
+        amount: z.number().int('Use whole pesewas').positive('Enter an amount').max(100_000_000),
+        reference: z.string().trim().max(40).nullish().transform((v) => v || null),
+      }),
+    )
+    .min(1, 'Take the payment')
+    .max(3),
+  idemKey: z.string().trim().min(8).max(60),
+});
+export type SaleInput = z.infer<typeof saleInput>;
 
 export const assignInput = z.object({
   attendantIds: z.array(id).min(1, 'Pick at least one attendant').max(6).refine((ids) => new Set(ids).size === ids.length, 'Pick each attendant once'),

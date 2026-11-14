@@ -31,8 +31,8 @@ describe('menu by role', () => {
   it('puts every finished screen on one of the phone tabs, none twice', () => {
     for (const role of ['cashier', 'manager', 'owner'] as const) {
       const items = navFor(canAs(role));
-      // Home and Jobs are tabs of their own; Money and Me list the rest.
-      const tabs = items.filter((i) => i.path === '/' || i.path === '/jobs').map((i) => i.label);
+      // Home and Jobs are tabs of their own (Sell items opens from Jobs); Money and Me list the rest.
+      const tabs = items.filter((i) => i.path === '/' || i.path === '/jobs' || i.path === '/sell').map((i) => i.label);
       const money = moneyFor(items).map((i) => i.label);
       const me = meFor(items).map((i) => i.label);
       const finished = items.filter((i) => i.phase <= BUILT_PHASE && !i.inSettings).map((i) => i.label);

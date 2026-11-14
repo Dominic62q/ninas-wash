@@ -26,6 +26,9 @@ export const phoneField = z
 
 export const COMMISSION_KINDS = ['percent', 'fixed'] as const;
 export const CAR_TYPES = ['saloon', 'suv', 'pickup', 'van', 'other'] as const;
+/** A service is work on a car. An item sits on the shelf (a duster, car shine, a drink): no attendants, no commission, counted stock. */
+export const SERVICE_KINDS = ['service', 'item'] as const;
+export type ServiceKind = (typeof SERVICE_KINDS)[number];
 
 const serviceFields = z.object({
   name: z.string().trim().min(1, 'Enter the service name').max(60),
@@ -46,11 +49,54 @@ function checkCommission(v: { price: number; commissionKind: string; commissionV
   }
 }
 
-export const serviceInput = serviceFields.superRefine(checkCommission);
+export const MAX_STOCK = 100_000;
+
+const serviceBase = serviceFields.extend({ kind: z.enum(SERVICE_KINDS).default('service') });
+
+function checkKind(v: { kind: string; commissionValue: number }, ctx: z.RefinementCtx) {
+  if (v.kind === 'item' && v.commissionValue !== 0) {
+    ctx.addIssue({ code: 'custom', path: ['commissionValue'], message: 'Items do not earn commission' });
+  }
+}
+
+/** A service or item as it is saved. Whether it is an item is fixed when it is made. Items never earn commission. */
+export const serviceInput = serviceBase.superRefine((v, ctx) => {
+  checkCommission(v, ctx);
+  checkKind(v, ctx);
+});
 export type ServiceInput = z.infer<typeof serviceInput>;
+
+/** A new service or item. An item can start with some on the shelf, recorded as its first delivery. */
+export const serviceCreate = serviceBase
+  .extend({ openingStock: z.number({ message: 'Enter how many are on the shelf' }).int('Use a whole number').min(0, 'Cannot be below 0').max(MAX_STOCK).default(0) })
+  .superRefine((v, ctx) => {
+    checkCommission(v, ctx);
+    checkKind(v, ctx);
+    if (v.kind !== 'item' && v.openingStock > 0) {
+      ctx.addIssue({ code: 'custom', path: ['openingStock'], message: 'Only items have stock' });
+    }
+  });
+export type ServiceCreate = z.infer<typeof serviceCreate>;
 /** For edits: send only what changed. The server merges it with the saved service and checks the whole. */
 export const serviceUpdate = serviceFields.partial();
 export type ServiceUpdate = z.infer<typeof serviceUpdate>;
+
+// ---- item stock ----------------------------------------------------------
+
+/** A delivery adds to the shelf. A count sets the shelf to what was actually counted, and needs a reason. */
+export const stockInput = z.discriminatedUnion('reason', [
+  z.object({
+    reason: z.literal('delivery'),
+    quantity: z.number().int('Use a whole number').min(1, 'At least 1').max(MAX_STOCK),
+    note: z.string().trim().max(200).nullish().transform((v) => v || null),
+  }),
+  z.object({
+    reason: z.literal('count'),
+    count: z.number().int('Use a whole number').min(0, 'Cannot be below 0').max(MAX_STOCK),
+    note: z.string().trim().min(3, 'Say why the count changed').max(200),
+  }),
+]);
+export type StockInput = z.infer<typeof stockInput>;
 
 // ---- attendants ----------------------------------------------------------
 
