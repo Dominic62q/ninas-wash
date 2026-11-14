@@ -425,10 +425,10 @@
 /* After signing in on a phone, the blue opens up from the button, then a welcome and a thin progress bar. */
 @keyframes welcome-open {
   from {
-    clip-path: circle(0 at 50% 78%);
+    clip-path: circle(0 at var(--wx, 50%) var(--wy, 78%));
   }
   to {
-    clip-path: circle(150% at 50% 78%);
+    clip-path: circle(150% at var(--wx, 50%) var(--wy, 78%));
   }
 }
 @keyframes welcome-pop {
