@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.js';
 import { jobLines, services, stockMoves } from '../db/schema.js';
 import { conflict } from './errors.js';
@@ -43,6 +43,6 @@ export async function returnJobStock(tx: DbOrTx, jobId: number, by: number) {
     .select({ serviceId: jobLines.serviceId, quantity: jobLines.quantity })
     .from(jobLines)
     .innerJoin(services, eq(services.id, jobLines.serviceId))
-    .where(and(eq(jobLines.jobId, jobId), eq(services.kind, 'item')));
+    .where(and(eq(jobLines.jobId, jobId), eq(services.kind, 'item'), isNull(jobLines.removedAt)));
   for (const l of lines) await moveStock(tx, { serviceId: l.serviceId, change: l.quantity, reason: 'void', jobId, by });
 }

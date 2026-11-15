@@ -29,9 +29,9 @@ async function list(db: DbOrTx): Promise<PayMethodDto[]> {
     .select({
       m: paymentMethods,
       used: sql<boolean>`(
-        exists (select 1 from payments where method_id = ${paymentMethods.id})
-        or exists (select 1 from expenses where method_id = ${paymentMethods.id})
-        or exists (select 1 from commission_payouts where method_id = ${paymentMethods.id}))`,
+        exists (select 1 from payments where method_id = payment_methods.id)
+        or exists (select 1 from expenses where method_id = payment_methods.id)
+        or exists (select 1 from commission_payouts where method_id = payment_methods.id))`,
     })
     .from(paymentMethods)
     .orderBy(asc(paymentMethods.sortOrder), asc(paymentMethods.id));

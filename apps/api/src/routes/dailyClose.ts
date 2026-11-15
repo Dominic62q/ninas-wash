@@ -48,7 +48,7 @@ export async function figures(db: DbOrTx, day: string) {
   const owingResult = await db.execute<{ count: number; amount: number }>(sql`
     select count(*)::int as count, coalesce(sum(t.total - t.paid), 0)::int as amount
     from (
-      select greatest(coalesce((select sum(price_at_sale) from job_lines where job_id = j.id), 0) - j.discount, 0) as total,
+      select greatest(coalesce((select sum(price_at_sale) from job_lines where job_id = j.id and removed_at is null), 0) - j.discount, 0) as total,
              coalesce((select sum(amount) from payments where job_id = j.id and voided_at is null), 0) as paid
       from jobs j
       where j.created_at >= ${start.toISOString()}::timestamptz and j.created_at < ${end.toISOString()}::timestamptz

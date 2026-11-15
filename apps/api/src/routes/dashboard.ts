@@ -39,7 +39,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     const owed = await db.execute<{ count: number; amount: number }>(sql`
       select count(*)::int as count, coalesce(sum(t.total - t.paid), 0)::int as amount
       from (
-        select greatest(coalesce((select sum(price_at_sale) from job_lines where job_id = j.id), 0) - j.discount, 0) as total,
+        select greatest(coalesce((select sum(price_at_sale) from job_lines where job_id = j.id and removed_at is null), 0) - j.discount, 0) as total,
                coalesce((select sum(amount) from payments where job_id = j.id and voided_at is null), 0) as paid
         from jobs j
         where j.voided_at is null and j.status in ('completed', 'dispatched')
@@ -79,7 +79,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         from job_lines l
         join jobs j on j.id = l.job_id
         join services s on s.id = l.service_id
-        where j.voided_at is null and j.created_at >= ${start.toISOString()}::timestamptz and j.created_at < ${end.toISOString()}::timestamptz
+        where l.removed_at is null and j.voided_at is null and j.created_at >= ${start.toISOString()}::timestamptz and j.created_at < ${end.toISOString()}::timestamptz
         group by s.id, s.name
         order by sales desc, s.name
         limit 6`)
@@ -92,7 +92,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         join job_lines l on l.id = la.job_line_id
         join jobs j on j.id = l.job_id
         join attendants a on a.id = la.attendant_id
-        where j.voided_at is null and j.created_at >= ${start.toISOString()}::timestamptz and j.created_at < ${end.toISOString()}::timestamptz
+        where l.removed_at is null and j.voided_at is null and j.created_at >= ${start.toISOString()}::timestamptz and j.created_at < ${end.toISOString()}::timestamptz
         group by a.id, a.name
         order by cars desc, a.name
         limit 6`)

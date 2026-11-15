@@ -30,7 +30,7 @@ export async function busyProblem(tx: DbOrTx, { jobId, crew, onJob = [] }: { job
     .innerJoin(services, eq(services.id, jobLines.serviceId))
     .innerJoin(attendants, eq(attendants.id, jobLineAttendants.attendantId))
     .leftJoin(vehicles, eq(vehicles.id, jobs.vehicleId))
-    .where(and(inArray(jobLineAttendants.attendantId, crew), eq(jobs.status, 'in_progress'), isNull(jobs.voidedAt)));
+    .where(and(inArray(jobLineAttendants.attendantId, crew), eq(jobs.status, 'in_progress'), isNull(jobs.voidedAt), isNull(jobLines.removedAt)));
   // A job being started is not "busy" with itself.
   const hit = busyNow.find((b) => b.jobId !== jobId);
   if (!hit) return null;

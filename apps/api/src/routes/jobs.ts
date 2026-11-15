@@ -8,11 +8,13 @@ import {
   createJobInput,
   discountInput,
   dispatchInput,
+  editLineInput,
   formatGHS,
   JOB_STATUSES,
   normalizePlate,
   paymentInput,
   referenceProblem,
+  removeLineInput,
   saleInput,
   splitEvenly,
   statusInput,
@@ -26,7 +28,7 @@ import type { DbOrTx } from '../db/client.js';
 import { attendants, auditLogs, customers, jobLineAttendants, jobLines, jobs, paymentMethods, payments, services, users, vehicles } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
 import { acceptBusy, busyProblem } from '../lib/busy.js';
-import { earnCommissions, reverseCommissions } from '../lib/commissions.js';
+import { earnCommissions, relinkPayouts, reverseCommissions, reverseLineCommissions } from '../lib/commissions.js';
 import { assertDayOpen, dayOf } from '../lib/dayLock.js';
 import { HttpError, conflict, notFound } from '../lib/errors.js';
 import { isUniqueViolation } from '../lib/helpers.js';
@@ -38,7 +40,7 @@ import { buildRows } from './customers.js';
 const ONE_WHOLE_LINE = 10_000; // basis points
 
 /** The line total after the whole-job discount, never below zero. Written out in full: see customers.ts. */
-export const jobTotal = sql<number>`greatest(coalesce((select sum(price_at_sale) from job_lines where job_id = "jobs"."id"), 0) - "jobs"."discount", 0)::int`;
+export const jobTotal = sql<number>`greatest(coalesce((select sum(price_at_sale) from job_lines where job_id = "jobs"."id" and removed_at is null), 0) - "jobs"."discount", 0)::int`;
 
 /** Payments received on the job, voided ones left out. */
 export const jobPaid = sql<number>`coalesce((select sum(amount) from payments where job_id = "jobs"."id" and voided_at is null), 0)::int`;
@@ -61,7 +63,7 @@ export async function loadJob(db: DbOrTx, id: number): Promise<JobDetail | null>
     .select({ line: jobLines, name: services.name, kind: services.kind })
     .from(jobLines)
     .innerJoin(services, eq(services.id, jobLines.serviceId))
-    .where(eq(jobLines.jobId, id))
+    .where(and(eq(jobLines.jobId, id), isNull(jobLines.removedAt)))
     .orderBy(asc(jobLines.id));
   const workers = lineRows.length
     ? await db
@@ -223,7 +225,7 @@ async function linesWithoutAttendants(tx: DbOrTx, jobId: number): Promise<number
   const result = await tx.execute<{ n: number }>(sql`
     select count(*)::int as n from job_lines jl
     join services s on s.id = jl.service_id and s.kind = 'service'
-    where jl.job_id = ${jobId} and not exists (select 1 from job_line_attendants a where a.job_line_id = jl.id)`);
+    where jl.job_id = ${jobId} and jl.removed_at is null and not exists (select 1 from job_line_attendants a where a.job_line_id = jl.id)`);
   return result.rows[0]?.n ?? 0;
 }
 
@@ -233,7 +235,7 @@ async function crewOf(tx: DbOrTx, jobId: number): Promise<number[]> {
     .select({ id: jobLineAttendants.attendantId })
     .from(jobLineAttendants)
     .innerJoin(jobLines, eq(jobLines.id, jobLineAttendants.jobLineId))
-    .where(eq(jobLines.jobId, jobId))
+    .where(and(eq(jobLines.jobId, jobId), isNull(jobLines.removedAt)))
     .orderBy(asc(jobLineAttendants.id));
   return rows.map((r) => r.id);
 }
@@ -242,7 +244,7 @@ const needsAttendant = () =>
   new HttpError(409, 'needs_attendant', 'Put at least one attendant on every service before starting.');
 
 const subtotalOf = async (tx: DbOrTx, jobId: number) => {
-  const [row] = await tx.select({ s: sql<number>`coalesce(sum(${jobLines.priceAtSale}), 0)::int` }).from(jobLines).where(eq(jobLines.jobId, jobId));
+  const [row] = await tx.select({ s: sql<number>`coalesce(sum(${jobLines.priceAtSale}), 0)::int` }).from(jobLines).where(and(eq(jobLines.jobId, jobId), isNull(jobLines.removedAt)));
   return row?.s ?? 0;
 };
 
@@ -255,6 +257,32 @@ const paidOf = async (tx: DbOrTx, jobId: number) => {
 };
 
 const tooHigh = () => new HttpError(400, 'discount_too_high', 'The discount cannot be more than the total of the services.');
+
+/** A correction is only for a job nobody has paid on yet, and that has not left. Anything else: void the payment (or the job) first. */
+async function assertCorrectable(tx: DbOrTx, job: typeof jobs.$inferSelect) {
+  if (job.status === 'dispatched') throw conflict('job_closed', 'This car has been handed over.');
+  const [paid] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(payments)
+    .where(and(eq(payments.jobId, job.id), isNull(payments.voidedAt)));
+  if ((paid?.n ?? 0) > 0) throw conflict('has_payments', 'This job has payments. Void the payments first.');
+}
+
+/** A line as the activity log shows it. */
+async function lineFacts(tx: DbOrTx, lineId: number) {
+  const [row] = await tx
+    .select({ line: jobLines, name: services.name })
+    .from(jobLines)
+    .innerJoin(services, eq(services.id, jobLines.serviceId))
+    .where(eq(jobLines.id, lineId));
+  const people = await tx
+    .select({ name: attendants.name })
+    .from(jobLineAttendants)
+    .innerJoin(attendants, eq(attendants.id, jobLineAttendants.attendantId))
+    .where(eq(jobLineAttendants.jobLineId, lineId))
+    .orderBy(asc(jobLineAttendants.id));
+  return { service: row!.name, quantity: row!.line.quantity, price: row!.line.priceAtSale, attendants: people.map((p) => p.name) };
+}
 
 // ---- routes -----------------------------------------------------------------
 
@@ -275,7 +303,7 @@ async function cardsFor(db: DbOrTx, rows: CardSource[]): Promise<JobListRow[]> {
         .select({ id: jobLines.id, jobId: jobLines.jobId, service: services.name, kind: services.kind, quantity: jobLines.quantity })
         .from(jobLines)
         .innerJoin(services, eq(services.id, jobLines.serviceId))
-        .where(inArray(jobLines.jobId, ids))
+        .where(and(inArray(jobLines.jobId, ids), isNull(jobLines.removedAt)))
         .orderBy(asc(jobLines.id))
     : [];
   const workers = lineRows.length
@@ -615,7 +643,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const [dup] = await tx
         .select({ id: jobLines.id })
         .from(jobLines)
-        .where(and(eq(jobLines.jobId, id), eq(jobLines.serviceId, input.serviceId)))
+        .where(and(eq(jobLines.jobId, id), eq(jobLines.serviceId, input.serviceId), isNull(jobLines.removedAt)))
         .limit(1);
       if (dup) throw conflict('duplicate_line', 'That service is already on this job.');
 
@@ -650,7 +678,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         .select({ line: jobLines, name: services.name, kind: services.kind })
         .from(jobLines)
         .innerJoin(services, eq(services.id, jobLines.serviceId))
-        .where(and(eq(jobLines.id, lineId), eq(jobLines.jobId, id)));
+        .where(and(eq(jobLines.id, lineId), eq(jobLines.jobId, id), isNull(jobLines.removedAt)));
       if (!line) throw notFound('That service on this job');
       if (line.kind === 'item') throw new HttpError(400, 'item_no_attendants', `${line.name} is an item, so nobody is put on it.`);
       const [existing] = await tx.select({ id: jobLineAttendants.id }).from(jobLineAttendants).where(eq(jobLineAttendants.jobLineId, lineId)).limit(1);
@@ -676,6 +704,142 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
     return { job: await loadJob(app.db, id) };
   });
 
+  // Correct one service on a job nobody has paid on: change how many, or who does it, and say why.
+  app.patch('/:id/lines/:lineId', { preHandler: app.requirePermission('job.edit') }, async (req) => {
+    const { id, lineId } = z.object({ id: z.coerce.number().int().positive(), lineId: z.coerce.number().int().positive() }).parse(req.params);
+    const input = editLineInput.parse(req.body);
+
+    await app.db.transaction(async (tx) => {
+      const job = await lockJob(tx, id);
+      await assertCorrectable(tx, job);
+      const [found] = await tx
+        .select({ line: jobLines, name: services.name, kind: services.kind })
+        .from(jobLines)
+        .innerJoin(services, eq(services.id, jobLines.serviceId))
+        .where(and(eq(jobLines.id, lineId), eq(jobLines.jobId, id), isNull(jobLines.removedAt)));
+      if (!found) throw notFound('That service on this job');
+      const { line } = found;
+      const before = await lineFacts(tx, lineId);
+
+      const newQuantity = input.quantity ?? line.quantity;
+      const quantityChanged = newQuantity !== line.quantity;
+      const newPrice = (line.priceAtSale / line.quantity) * newQuantity;
+
+      if (quantityChanged) {
+        if ((await subtotalOf(tx, id)) - line.priceAtSale + newPrice < job.discount) {
+          throw new HttpError(400, 'discount_too_high', 'That would take the total below the discount. Lower the discount first.');
+        }
+        if (found.kind === 'item') {
+          await moveStock(tx, { serviceId: line.serviceId, change: line.quantity - newQuantity, reason: 'correction', jobId: id, by: req.user!.id, note: input.reason });
+        }
+      }
+
+      let overrode = false;
+      let changedPerson = false;
+      let personNow: number | null = null;
+      const current = await tx.select().from(jobLineAttendants).where(eq(jobLineAttendants.jobLineId, lineId)).orderBy(asc(jobLineAttendants.id));
+      personNow = current[0]?.attendantId ?? null;
+      const newPerson = input.attendantIds?.[0];
+      if (newPerson !== undefined) {
+        if (found.kind === 'item') throw new HttpError(400, 'item_no_attendants', `${found.name} is an item, so nobody is put on it.`);
+        if (current.length > 1) {
+          throw conflict('split_line', 'This service was shared between people before the one-person rule. Void the job and enter it again.');
+        }
+        if (current[0]?.attendantId !== newPerson) {
+          await activeAttendants(tx, [newPerson]);
+          if (job.status === 'in_progress') {
+            const others = await tx
+              .select({ id: jobLineAttendants.attendantId })
+              .from(jobLineAttendants)
+              .innerJoin(jobLines, eq(jobLines.id, jobLineAttendants.jobLineId))
+              .where(and(eq(jobLines.jobId, id), isNull(jobLines.removedAt), ne(jobLines.id, lineId)));
+            overrode = acceptBusy(await busyProblem(tx, { jobId: id, crew: [newPerson], onJob: others.map((o) => o.id) }), input.busyNote, req.user!.permissions);
+          }
+          changedPerson = true;
+          personNow = newPerson;
+        }
+      }
+
+      let nowLineId = lineId;
+      if (job.status === 'completed' && found.kind === 'service' && (quantityChanged || changedPerson)) {
+        // The wash is done and its earnings are written down, and those are never edited. So the old line is struck off
+        // (its earnings taken back) and a fresh one, with the right count and person, earns in its place.
+        await reverseLineCommissions(tx, lineId);
+        await tx.update(jobLines).set({ removedAt: new Date(), removedBy: req.user!.id, removeReason: `Corrected: ${input.reason}` }).where(eq(jobLines.id, lineId));
+        const [fresh] = await tx
+          .insert(jobLines)
+          .values({
+            jobId: id,
+            serviceId: line.serviceId,
+            quantity: newQuantity,
+            priceAtSale: newPrice,
+            commissionKindAtSale: line.commissionKindAtSale,
+            commissionValueAtSale: line.commissionValueAtSale,
+          })
+          .returning();
+        nowLineId = fresh!.id;
+        if (personNow !== null) await insertShares(tx, nowLineId, [personNow]);
+        await earnCommissions(tx, id, undefined, nowLineId);
+        if (personNow !== null) await relinkPayouts(tx, personNow);
+      } else {
+        if (quantityChanged) await tx.update(jobLines).set({ quantity: newQuantity, priceAtSale: newPrice }).where(eq(jobLines.id, lineId));
+        if (changedPerson && personNow !== null) {
+          if (current[0]) await tx.update(jobLineAttendants).set({ attendantId: personNow }).where(eq(jobLineAttendants.id, current[0].id));
+          else await insertShares(tx, lineId, [personNow]);
+        }
+      }
+
+      if (overrode) await writeAudit(tx, { userId: req.user!.id, action: 'job.override_busy', recordTable: 'jobs', recordId: id, note: input.busyNote!, ip: req.ip });
+      await writeAudit(tx, {
+        userId: req.user!.id,
+        action: 'job.edit_line',
+        recordTable: 'jobs',
+        recordId: id,
+        before,
+        after: await lineFacts(tx, nowLineId),
+        note: input.reason,
+        ip: req.ip,
+      });
+    });
+    return { job: await loadJob(app.db, id) };
+  });
+
+  // Take one service or item off a job nobody has paid on. The record stays: who, when and why. Items go back on the shelf.
+  app.post('/:id/lines/:lineId/remove', { preHandler: app.requirePermission('job.edit') }, async (req) => {
+    const { id, lineId } = z.object({ id: z.coerce.number().int().positive(), lineId: z.coerce.number().int().positive() }).parse(req.params);
+    const { reason } = removeLineInput.parse(req.body);
+
+    await app.db.transaction(async (tx) => {
+      const job = await lockJob(tx, id);
+      await assertCorrectable(tx, job);
+      const [found] = await tx
+        .select({ line: jobLines, kind: services.kind })
+        .from(jobLines)
+        .innerJoin(services, eq(services.id, jobLines.serviceId))
+        .where(and(eq(jobLines.id, lineId), eq(jobLines.jobId, id), isNull(jobLines.removedAt)));
+      if (!found) throw notFound('That service on this job');
+      const { line } = found;
+
+      const [left] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(jobLines)
+        .where(and(eq(jobLines.jobId, id), isNull(jobLines.removedAt)));
+      if ((left?.n ?? 0) <= 1) throw conflict('last_line', 'A job needs at least one service. To cancel the whole job, void it.');
+      if ((await subtotalOf(tx, id)) - line.priceAtSale < job.discount) {
+        throw new HttpError(400, 'discount_too_high', 'That would take the total below the discount. Lower the discount first.');
+      }
+
+      const before = await lineFacts(tx, lineId);
+      await tx.update(jobLines).set({ removedAt: new Date(), removedBy: req.user!.id, removeReason: reason }).where(eq(jobLines.id, lineId));
+      if (found.kind === 'item') {
+        await moveStock(tx, { serviceId: line.serviceId, change: line.quantity, reason: 'correction', jobId: id, by: req.user!.id, note: reason });
+      }
+      if (job.status === 'completed') await reverseLineCommissions(tx, lineId);
+      await writeAudit(tx, { userId: req.user!.id, action: 'job.remove_line', recordTable: 'jobs', recordId: id, before, note: reason, ip: req.ip });
+    });
+    return { job: await loadJob(app.db, id) };
+  });
+
   app.patch('/:id', work, async (req) => {
     const { id } = idParams.parse(req.params);
     const { discount } = discountInput.parse(req.body);
@@ -683,7 +847,8 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
     await app.db.transaction(async (tx) => {
       const job = await lockJob(tx, id);
       if (job.status !== 'pending' && job.status !== 'in_progress') {
-        throw conflict('job_closed', 'This job is closed.');
+        // A manager can still fix the discount on a finished wash that has not been handed over.
+        if (job.status !== 'completed' || !can(req.user!.permissions, 'job.edit')) throw conflict('job_closed', 'This job is closed.');
       }
       const subtotal = await subtotalOf(tx, id);
       if (discount > subtotal) throw tooHigh();

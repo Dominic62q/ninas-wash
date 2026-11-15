@@ -15,7 +15,7 @@ const jobsThisWeek = sql<number>`(
   from ${jobLineAttendants} jla
   join ${jobLines} jl on jl.id = jla.job_line_id
   join ${jobs} j on j.id = jl.job_id
-  where jla.attendant_id = "attendants"."id" and j.voided_at is null and j.created_at > now() - interval '7 days'
+  where jla.attendant_id = "attendants"."id" and jl.removed_at is null and j.voided_at is null and j.created_at > now() - interval '7 days'
 )`;
 
 type Row = typeof attendants.$inferSelect;

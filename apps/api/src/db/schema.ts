@@ -31,7 +31,7 @@ export const serviceKindEnum = pgEnum('service_kind', ['service', 'item']);
 /** A wash has a car. A sale is items sold over the counter to a walk-in, with no car. */
 export const jobKindEnum = pgEnum('job_kind', ['wash', 'sale']);
 /** Why an item's stock changed: delivered, sold, given back by a void, or corrected after a count. */
-export const stockReasonEnum = pgEnum('stock_reason', ['delivery', 'sale', 'void', 'count']);
+export const stockReasonEnum = pgEnum('stock_reason', ['delivery', 'sale', 'void', 'count', 'correction']);
 export const commissionKindEnum = pgEnum('commission_kind', ['percent', 'fixed']);
 export const commissionStatusEnum = pgEnum('commission_status', ['earned', 'reversed']);
 export const tipKindEnum = pgEnum('tip_kind', ['direct', 'held']);
@@ -227,9 +227,14 @@ export const jobLines = pgTable(
     commissionKindAtSale: commissionKindEnum('commission_kind_at_sale').notNull(),
     commissionValueAtSale: integer('commission_value_at_sale').notNull(),
     createdAt: createdAt(),
+    /** A service taken off the job by someone with permission, before it was paid. It stays on record and counts for nothing. */
+    removedAt: stamp('removed_at'),
+    removedBy: ref('removed_by').references(() => users.id),
+    removeReason: text('remove_reason'),
   },
   (t) => [
     index('job_lines_job_idx').on(t.jobId),
+    check('job_lines_removed_complete', sql`(${t.removedAt} IS NULL) = (${t.removedBy} IS NULL) AND (${t.removedAt} IS NULL) = (${t.removeReason} IS NULL)`),
     check('job_lines_quantity_range', sql`${t.quantity} between 1 and 50`),
     check('job_lines_price_not_negative', sql`${t.priceAtSale} >= 0`),
     check('job_lines_commission_not_negative', sql`${t.commissionValueAtSale} >= 0`),
@@ -276,7 +281,7 @@ export const stockMoves = pgTable(
     index('stock_moves_job_idx').on(t.jobId),
     check('stock_moves_change_not_zero', sql`${t.change} <> 0`),
     check('stock_moves_after_not_negative', sql`${t.after} >= 0`),
-    check('stock_moves_job_for_sales', sql`(${t.reason} IN ('sale', 'void')) = (${t.jobId} IS NOT NULL)`),
+    check('stock_moves_job_for_sales', sql`(${t.reason} IN ('delivery', 'count')) = (${t.jobId} IS NULL)`),
   ],
 );
 

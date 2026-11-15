@@ -6,10 +6,12 @@ import {
   addLineInput,
   assignInput,
   discountInput,
+  editLineInput,
   formatAmount,
   formatGHS,
   formatPhone,
   parseGHS,
+  removeLineInput,
   voidInput,
   type JobDetail as JobDetailDto,
   type JobHistoryEntry,
@@ -50,6 +52,16 @@ function describe(h: JobHistoryEntry): string {
       return `Added ${String(a.service)}`;
     case 'job.assign':
       return `${String(a.service)}: ${((a.attendants as string[] | undefined) ?? []).join(', ')}`;
+    case 'job.edit_line': {
+      const who = (v: Record<string, unknown>) => ((v.attendants as string[] | undefined) ?? []).join(', ');
+      const changes = [
+        a.quantity !== b.quantity ? `${String(b.quantity)} → ${String(a.quantity)}` : '',
+        who(a) !== who(b) ? `${who(b) || 'nobody'} → ${who(a)}` : '',
+      ].filter(Boolean);
+      return `Corrected ${String(b.service)}${changes.length ? `: ${changes.join(', ')}` : ''}`;
+    }
+    case 'job.remove_line':
+      return `Took off ${String(b.service)}${Number(b.quantity) > 1 ? ` × ${String(b.quantity)}` : ''}`;
     case 'job.discount':
       return `Discount ${money(b.discount)} → ${money(a.discount)}`;
     case 'job.void':
@@ -229,6 +241,117 @@ function DiscountPanel({ job, open, onClose }: { job: JobDetailDto; open: boolea
   );
 }
 
+/** A manager corrects one service before it is paid: how many, or who does it. The reason goes in the activity log. */
+function EditLinePanel({ job, lineId, onClose }: { job: JobDetailDto; lineId: number | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const attendants = useAttendants();
+  const services = useServices();
+  const toast = useToast();
+  const line = job.lines.find((l) => l.id === lineId);
+  const [quantity, setQuantity] = useState(line?.quantity ?? 1);
+  const [ids, setIds] = useState<number[]>(line?.attendants[0] ? [line.attendants[0].id] : []);
+  const [reason, setReason] = useState('');
+  const [busyNote, setBusyNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const isItem = line?.kind === 'item';
+  // What is on the shelf now, plus what this line already holds.
+  const onShelf = (services.data?.services ?? []).find((s) => s.id === line?.serviceId)?.stock;
+  const most = isItem && onShelf !== undefined && line ? onShelf + line.quantity : undefined;
+
+  const save = useMutation({
+    mutationFn: (body: unknown) => api(`/jobs/${job.id}/lines/${lineId}`, { method: 'PATCH', body }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      await queryClient.invalidateQueries({ queryKey: ['services'] });
+      toast.success('Job corrected');
+      onClose();
+    },
+  });
+
+  function submit() {
+    if (!line) return;
+    const personNow = line.attendants[0]?.id;
+    const body: Record<string, unknown> = { reason, busyNote };
+    if (quantity !== line.quantity) body.quantity = quantity;
+    if (!isItem && ids[0] !== undefined && ids[0] !== personNow) body.attendantIds = ids;
+    const parsed = editLineInput.safeParse(body);
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Check the details');
+    setError(null);
+    save.mutate(parsed.data);
+  }
+
+  return (
+    <Panel open={lineId !== null} onClose={onClose} title="Correct this service">
+      {line && (
+        <>
+          <p className="text-ink-2">
+            Fix <strong className="text-ink">{line.name}</strong> before it is paid. Your name and the reason go on record.
+          </p>
+          <div className="flex items-center gap-3">
+            <QuantityStepper label={isItem ? 'of this item' : 'of this service'} value={quantity} onChange={(n) => { setQuantity(n); setError(null); }} max={most} />
+            {quantity !== line.quantity && <span className="num text-sm text-ink-3">{formatGHS((line.price / line.quantity) * quantity)}</span>}
+          </div>
+          {!isItem && <AttendantPicker label="Attendant" options={attendants.data?.attendants ?? []} value={ids} onChange={(next) => { setIds(next); setError(null); }} />}
+          <Field label="Why is it being corrected?" error={error ?? undefined}>
+            <input className="input" value={reason} onChange={(e) => { setReason(e.target.value); setError(null); }} maxLength={200} autoComplete="off" aria-invalid={!!error} placeholder="Customer wanted two seats, not three" />
+          </Field>
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
+          <BusyNote error={save.error} note={busyNote} onNote={setBusyNote} />
+          <button type="button" className="btn btn-primary" disabled={save.isPending} onClick={submit}>
+            {save.isPending ? 'Saving…' : 'Save correction'}
+          </button>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/** Take one service or item off a job that has not been paid. It stays on record with who and why. */
+function RemoveLinePanel({ job, lineId, onClose }: { job: JobDetailDto; lineId: number | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const line = job.lines.find((l) => l.id === lineId);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const last = job.lines.length <= 1;
+  const save = useMutation({
+    mutationFn: (body: unknown) => api(`/jobs/${job.id}/lines/${lineId}/remove`, { method: 'POST', body }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      await queryClient.invalidateQueries({ queryKey: ['services'] });
+      toast.success(line?.kind === 'item' ? 'Item taken off, back on the shelf' : 'Service taken off the job');
+      onClose();
+    },
+  });
+
+  function submit() {
+    const parsed = removeLineInput.safeParse({ reason });
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Say why');
+    setError(null);
+    save.mutate(parsed.data);
+  }
+
+  return (
+    <Panel open={lineId !== null} onClose={onClose} title="Take this off the job">
+      {line && (
+        <>
+          <p className="text-ink-2">
+            Take <strong className="text-ink">{line.name}{line.quantity > 1 ? ` × ${line.quantity}` : ''}</strong> off this job?{' '}
+            {last ? 'It is the only thing on the job, so void the job instead.' : line.kind === 'item' ? 'It goes back on the shelf.' : 'The total goes down by its price.'}
+          </p>
+          <Field label="Reason" error={error ?? undefined}>
+            <input className="input" value={reason} onChange={(e) => { setReason(e.target.value); setError(null); }} maxLength={200} autoComplete="off" aria-invalid={!!error} placeholder="Added by mistake" />
+          </Field>
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
+          <button type="button" className="btn border-red bg-red text-white" disabled={save.isPending || last} onClick={submit}>
+            {save.isPending ? 'Taking off…' : 'Take off the job'}
+          </button>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 function VoidPanel({ job, open, onClose }: { job: JobDetailDto; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -299,6 +422,8 @@ function Tracker({ status }: { status: JobDetailDto['status'] }) {
 
 type Dialog =
   | { kind: 'assign'; lineId: number }
+  | { kind: 'edit'; lineId: number }
+  | { kind: 'remove'; lineId: number }
   | { kind: 'add'; of: ServiceKind }
   | { kind: 'discount' }
   | { kind: 'void' }
@@ -390,6 +515,43 @@ export function JobDetail() {
         : finished && can('job.dispatch') && job.balance === 0
           ? { step: 'dispatch', label: 'Slide to dispatch' }
           : null;
+
+  /** A manager can still correct a job until money is taken on it or the car leaves. */
+  const canCorrect = !job.voided && job.status !== 'dispatched' && job.paid === 0 && can('job.edit');
+  const renderLine = (l: JobDetailDto['lines'][number]) => (
+    <li key={l.id} className="flex items-start gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-ink">
+          {l.name}
+          {l.quantity > 1 && <span className="num font-normal text-ink-3"> × {l.quantity}</span>}
+        </p>
+        {l.attendants.length > 0 ? (
+          <p className="text-sm text-ink-2">{l.attendants.map((a) => (l.attendants.length > 1 ? `${a.name} ${a.shareBp / 100}%` : a.name)).join(', ')}</p>
+        ) : l.kind === 'item' ? (
+          <p className="text-sm text-ink-3">Item</p>
+        ) : open ? (
+          <button type="button" className="tap text-sm text-amber underline" onClick={() => setDialog({ kind: 'assign', lineId: l.id })}>
+            Assign attendant
+          </button>
+        ) : (
+          <p className="text-sm text-ink-3">None</p>
+        )}
+        {canCorrect && (
+          <div className="flex gap-4">
+            <button type="button" className="tap text-sm text-blue-d" onClick={() => setDialog({ kind: 'edit', lineId: l.id })}>
+              Correct
+            </button>
+            {job.lines.length > 1 && (
+              <button type="button" className="tap text-sm text-red-d" onClick={() => setDialog({ kind: 'remove', lineId: l.id })}>
+                Take off
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <p className="num font-semibold text-ink">{formatGHS(l.price)}</p>
+    </li>
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4 max-lg:flex-1">
@@ -485,30 +647,7 @@ export function JobDetail() {
           <>
             <h3 className="border-b border-line px-4 py-3 text-sm font-medium text-ink-2">Services</h3>
             <ul className="divide-y divide-line-2">
-            {serviceLines.map((l) => (
-              <li key={l.id} className="flex items-start gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-ink">
-                    {l.name}
-                    {l.quantity > 1 && <span className="num font-normal text-ink-3"> × {l.quantity}</span>}
-                  </p>
-                  {l.attendants.length > 0 ? (
-                    <p className="text-sm text-ink-2">
-                      {l.attendants.map((a) => (l.attendants.length > 1 ? `${a.name} ${a.shareBp / 100}%` : a.name)).join(', ')}
-                    </p>
-                  ) : l.kind === 'item' ? (
-                    <p className="text-sm text-ink-3">Item</p>
-                  ) : open ? (
-                    <button type="button" className="tap text-sm text-amber underline" onClick={() => setDialog({ kind: 'assign', lineId: l.id })}>
-                      Assign attendant
-                    </button>
-                  ) : (
-                    <p className="text-sm text-ink-3">None</p>
-                  )}
-                </div>
-                <p className="num font-semibold text-ink">{formatGHS(l.price)}</p>
-              </li>
-            ))}
+            {serviceLines.map(renderLine)}
             </ul>
           </>
         )}
@@ -516,30 +655,7 @@ export function JobDetail() {
           <>
             <h3 className={`border-b border-line px-4 py-3 text-sm font-medium text-ink-2 ${serviceLines.length > 0 ? 'border-t' : ''}`}>Items</h3>
             <ul className="divide-y divide-line-2">
-            {itemLines.map((l) => (
-              <li key={l.id} className="flex items-start gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-ink">
-                    {l.name}
-                    {l.quantity > 1 && <span className="num font-normal text-ink-3"> × {l.quantity}</span>}
-                  </p>
-                  {l.attendants.length > 0 ? (
-                    <p className="text-sm text-ink-2">
-                      {l.attendants.map((a) => (l.attendants.length > 1 ? `${a.name} ${a.shareBp / 100}%` : a.name)).join(', ')}
-                    </p>
-                  ) : l.kind === 'item' ? (
-                    <p className="text-sm text-ink-3">Item</p>
-                  ) : open ? (
-                    <button type="button" className="tap text-sm text-amber underline" onClick={() => setDialog({ kind: 'assign', lineId: l.id })}>
-                      Assign attendant
-                    </button>
-                  ) : (
-                    <p className="text-sm text-ink-3">None</p>
-                  )}
-                </div>
-                <p className="num font-semibold text-ink">{formatGHS(l.price)}</p>
-              </li>
-            ))}
+            {itemLines.map(renderLine)}
             </ul>
           </>
         )}
@@ -553,7 +669,7 @@ export function JobDetail() {
               <div className="flex justify-between text-ink-2">
                 <dt>
                   Discount{' '}
-                  {open && (
+                  {(open || (finished && canCorrect)) && (
                     <button type="button" className="tap text-blue-d" onClick={() => setDialog({ kind: 'discount' })}>
                       Change
                     </button>
@@ -568,7 +684,7 @@ export function JobDetail() {
             <dd className="display text-[24px] leading-none text-navy lg:text-[28px]">{formatGHS(job.total)}</dd>
           </div>
         </dl>
-        {open && !job.discount && (
+        {(open || (finished && canCorrect)) && !job.discount && (
           <div className="px-4 pb-1">
             <button type="button" className="tap text-sm text-blue-d" onClick={() => setDialog({ kind: 'discount' })}>
               Add discount
@@ -698,6 +814,8 @@ export function JobDetail() {
       )}
 
       <AssignPanel key={dialog?.kind === 'assign' ? dialog.lineId : 'none'} job={job} lineId={dialog?.kind === 'assign' ? dialog.lineId : null} onClose={close} />
+      <EditLinePanel key={`edit-${dialog?.kind === 'edit' ? dialog.lineId : 'none'}`} job={job} lineId={dialog?.kind === 'edit' ? dialog.lineId : null} onClose={close} />
+      <RemoveLinePanel key={`remove-${dialog?.kind === 'remove' ? dialog.lineId : 'none'}`} job={job} lineId={dialog?.kind === 'remove' ? dialog.lineId : null} onClose={close} />
       <AddServicePanel key={`add-${job.lines.length}-${dialog?.kind === 'add' ? dialog.of : ''}`} job={job} kind={dialog?.kind === 'add' ? dialog.of : 'service'} open={dialog?.kind === 'add'} onClose={close} />
       <DiscountPanel key={`discount-${job.discount}`} job={job} open={dialog?.kind === 'discount'} onClose={close} />
       <VoidPanel job={job} open={dialog?.kind === 'void'} onClose={close} />

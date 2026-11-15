@@ -81,7 +81,7 @@ function StockText({ stock }: { stock: number }) {
   return <span className={tone}>{stock === 0 ? 'Out of stock' : `${stock} in stock`}</span>;
 }
 
-const MOVE_LABEL: Record<StockMoveDto['reason'], string> = { delivery: 'Delivery', sale: 'Sold', void: 'Back from a voided job', count: 'Shelf count' };
+const MOVE_LABEL: Record<StockMoveDto['reason'], string> = { delivery: 'Delivery', sale: 'Sold', void: 'Back from a voided job', count: 'Shelf count', correction: 'Job corrected' };
 
 /** An item's shelf: add a delivery, correct it after counting, and see every change. */
 function Stock({ item }: { item: ServiceDto }) {

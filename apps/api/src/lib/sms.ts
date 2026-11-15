@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, max, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, max, sql } from 'drizzle-orm';
 import {
   DEFAULT_TEMPLATES,
   firstName,
@@ -229,7 +229,7 @@ export function createSmsService(opts: { db: Db; gateway: SmsGateway; log?: { er
       .select({ name: services.name, quantity: jobLines.quantity })
       .from(jobLines)
       .innerJoin(services, eq(services.id, jobLines.serviceId))
-      .where(eq(jobLines.jobId, jobId))
+      .where(and(eq(jobLines.jobId, jobId), isNull(jobLines.removedAt)))
       .orderBy(jobLines.id);
 
     const values: Record<Placeholder, string> = {

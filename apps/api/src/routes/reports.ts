@@ -46,7 +46,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
       from (
         select j.discount,
                j.status in ('completed', 'dispatched') as finished,
-               coalesce((select sum(price_at_sale) from job_lines where job_id = j.id), 0) as total,
+               coalesce((select sum(price_at_sale) from job_lines where job_id = j.id and removed_at is null), 0) as total,
                coalesce((select sum(amount) from payments where job_id = j.id and voided_at is null), 0) as paid
         from jobs j
         where j.voided_at is null and j.kind = 'wash' and j.created_at >= ${lo}::timestamptz and j.created_at < ${hi}::timestamptz
@@ -62,7 +62,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
       from job_lines l
       join jobs j on j.id = l.job_id
       join services s on s.id = l.service_id
-      where s.kind = ${kind} and j.voided_at is null and j.created_at >= ${lo}::timestamptz and j.created_at < ${hi}::timestamptz
+      where l.removed_at is null and s.kind = ${kind} and j.voided_at is null and j.created_at >= ${lo}::timestamptz and j.created_at < ${hi}::timestamptz
       group by s.id, s.name
       order by sales desc, s.name`);
     const byService = await byKind('service');

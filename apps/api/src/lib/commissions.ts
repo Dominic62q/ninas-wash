@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql, type SQLWrapper } from 'drizzle-orm';
 import { percentOf } from '@niinas/shared';
 import type { DbOrTx } from '../db/client.js';
 import { commissionPayouts, commissions, jobLineAttendants, jobLines } from '../db/schema.js';
@@ -20,9 +20,9 @@ export function splitByShares(amount: number, sharesBp: number[]): number[] {
 
 /**
  * Called when a job is marked Completed: one commission for each person on each service.
- * It is based on the price at sale, so a whole-job discount does not reduce what attendants earn.
+ * Pass `onlyLineId` to earn for one line only (a corrected line on a finished wash). It is based on the price at sale, so a whole-job discount does not reduce what attendants earn.
  */
-export async function earnCommissions(tx: DbOrTx, jobId: number, at?: Date): Promise<void> {
+export async function earnCommissions(tx: DbOrTx, jobId: number, at?: Date, onlyLineId?: number): Promise<void> {
   const rows = await tx
     .select({
       lineId: jobLines.id,
@@ -35,7 +35,7 @@ export async function earnCommissions(tx: DbOrTx, jobId: number, at?: Date): Pro
     })
     .from(jobLineAttendants)
     .innerJoin(jobLines, eq(jobLines.id, jobLineAttendants.jobLineId))
-    .where(eq(jobLines.jobId, jobId))
+    .where(and(eq(jobLines.jobId, jobId), isNull(jobLines.removedAt), onlyLineId === undefined ? undefined : eq(jobLines.id, onlyLineId)))
     .orderBy(asc(jobLines.id), asc(jobLineAttendants.id));
 
   const byLine = new Map<number, typeof rows>();
@@ -49,13 +49,8 @@ export async function earnCommissions(tx: DbOrTx, jobId: number, at?: Date): Pro
   if (values.length > 0) await tx.insert(commissions).values(values).onConflictDoNothing();
 }
 
-/** The job was voided: take back what its attendants had earned. Money already paid out shows as a negative balance. */
-export async function reverseCommissions(tx: DbOrTx, jobId: number): Promise<void> {
-  const lineAttendantIds = tx
-    .select({ id: jobLineAttendants.id })
-    .from(jobLineAttendants)
-    .innerJoin(jobLines, eq(jobLines.id, jobLineAttendants.jobLineId))
-    .where(eq(jobLines.jobId, jobId));
+/** Take back what the given line-attendant rows earned. Money already paid out shows as a negative balance. */
+async function reverseFor(tx: DbOrTx, lineAttendantIds: SQLWrapper): Promise<void> {
   const reversed = await tx
     .update(commissions)
     .set({ status: 'reversed', reversedAt: new Date() })
@@ -67,6 +62,22 @@ export async function reverseCommissions(tx: DbOrTx, jobId: number): Promise<voi
     .from(jobLineAttendants)
     .where(inArray(jobLineAttendants.id, reversed.map((r) => r.lineAttendantId)));
   for (const p of people) await relinkPayouts(tx, p.attendantId);
+}
+
+/** The job was voided: take back what its attendants had earned. Money already paid out shows as a negative balance. */
+export async function reverseCommissions(tx: DbOrTx, jobId: number): Promise<void> {
+  const lineAttendantIds = tx
+    .select({ id: jobLineAttendants.id })
+    .from(jobLineAttendants)
+    .innerJoin(jobLines, eq(jobLines.id, jobLineAttendants.jobLineId))
+    .where(eq(jobLines.jobId, jobId));
+  await reverseFor(tx, lineAttendantIds);
+}
+
+/** One service was taken off a finished job: take back what its attendant earned for it. */
+export async function reverseLineCommissions(tx: DbOrTx, lineId: number): Promise<void> {
+  const lineAttendantIds = tx.select({ id: jobLineAttendants.id }).from(jobLineAttendants).where(eq(jobLineAttendants.jobLineId, lineId));
+  await reverseFor(tx, lineAttendantIds);
 }
 
 /** Total earned and total paid out for one attendant, in pesewas. */

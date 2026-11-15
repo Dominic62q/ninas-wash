@@ -99,6 +99,21 @@ export const assignInput = z.object({
 
 export const discountInput = z.object({ discount: discountField });
 
+const reasonField = z.string().trim().min(3, 'Say why').max(200);
+
+/** A manager takes one service or item off a job that has not been paid yet. */
+export const removeLineInput = z.object({ reason: reasonField });
+
+/** A manager corrects one service before it is paid: how many, or who does it. The reason goes in the activity log. */
+export const editLineInput = z
+  .object({
+    quantity: z.number().int('Use a whole number').min(1, 'At least 1').max(MAX_LINE_QUANTITY, `Up to ${MAX_LINE_QUANTITY}`).optional(),
+    attendantIds: z.array(id).min(1, 'Pick an attendant').max(1, 'One attendant per service').optional(),
+    busyNote: z.string().trim().max(200).nullish().transform((v) => v || null),
+    reason: reasonField,
+  })
+  .refine((v) => v.quantity !== undefined || v.attendantIds !== undefined, 'Change the quantity or the person');
+
 /** Jobs only move forward. Handing the car over is its own step (dispatch), below. */
 export const statusInput = z.object({
   to: z.enum(['in_progress', 'completed']),

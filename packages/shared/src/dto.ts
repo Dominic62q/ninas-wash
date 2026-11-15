@@ -24,7 +24,7 @@ export interface StockMoveDto {
   at: string;
   /** Signed: +24 delivered, -2 sold. */
   change: number;
-  reason: 'delivery' | 'sale' | 'void' | 'count';
+  reason: 'delivery' | 'sale' | 'void' | 'count' | 'correction';
   /** On the shelf after this change. */
   after: number;
   note: string | null;

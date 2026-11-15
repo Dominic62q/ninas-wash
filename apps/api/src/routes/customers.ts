@@ -280,7 +280,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     if (!record) throw notFound('That customer');
     const [customer] = await buildRows(app.db, [record]);
 
-    const total = sql<number>`greatest(coalesce((select sum(price_at_sale) from ${jobLines} where job_id = ${jobs.id}), 0) - ${jobs.discount}, 0)::int`;
+    const total = sql<number>`greatest(coalesce((select sum(price_at_sale) from ${jobLines} where job_id = ${jobs.id} and removed_at is null), 0) - ${jobs.discount}, 0)::int`;
     const paid = sql<number>`coalesce((select sum(amount) from ${payments} where job_id = ${jobs.id} and voided_at is null), 0)::int`;
     const jobRows = await app.db
       .select({ id: jobs.id, at: jobs.createdAt, status: jobs.status, voidedAt: jobs.voidedAt, total, paid })
@@ -297,7 +297,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           .select({ jobId: jobLines.jobId, name: services.name })
           .from(jobLines)
           .innerJoin(services, eq(services.id, jobLines.serviceId))
-          .where(inArray(jobLines.jobId, recent.map((j) => j.id)))
+          .where(and(inArray(jobLines.jobId, recent.map((j) => j.id)), isNull(jobLines.removedAt)))
           .orderBy(asc(jobLines.id))
       : [];
     const recentVisits: VisitDto[] = recent.map((j) => ({
