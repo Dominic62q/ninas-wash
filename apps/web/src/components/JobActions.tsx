@@ -16,13 +16,13 @@ interface Asking {
 const COPY: Record<JobStep, { title: (plate: string) => string; message: string; label: string; done: (plate: string) => string }> = {
   start: {
     title: (p) => `Start washing ${p}?`,
-    message: 'The car moves to Washing and the timer starts',
+    message: 'The wash starts and the timer runs',
     label: 'Start wash',
     done: (p) => `Wash started on ${p}`,
   },
   complete: {
     title: (p) => `Mark ${p} complete?`,
-    message: 'The wash is finished. Commission is worked out from the price now, and the car is ready for payment.',
+    message: 'The wash is finished. Commission is worked out from the price now.',
     label: 'Mark complete',
     done: (p) => `${p} is done`,
   },

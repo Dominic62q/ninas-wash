@@ -6,17 +6,32 @@ import { useAuth } from '../lib/auth';
 import { Select } from './Dropdown';
 import { Field, Pill } from './ui';
 
-export const STATUS_LABEL: Record<JobStatus, string> = {
-  pending: 'Pending',
-  in_progress: 'In progress',
-  completed: 'Completed',
-  dispatched: 'Dispatched',
+/**
+ * What staff see instead of the job's real status. The steps behind it (booked, started, finished, handed over) still
+ * happen and are kept for the activity log and reports, but the screens only say what matters: is it paid, can it go.
+ */
+export type Stage = 'waiting' | 'ready' | 'gone' | 'voided' | 'sold';
+
+export const STAGE_LABEL: Record<Stage, string> = {
+  waiting: 'Waiting for payment',
+  ready: 'Ready to dispatch',
+  gone: 'Dispatched',
+  voided: 'Voided',
+  sold: 'Sold',
 };
 
-const TONE = { pending: 'amber', in_progress: 'blue', completed: 'green', dispatched: 'grey' } as const;
+export const STAGE_TONE = { waiting: 'amber', ready: 'green', gone: 'grey', voided: 'grey', sold: 'green' } as const;
 
-export function StatusPill({ status }: { status: JobStatus }) {
-  return <Pill tone={TONE[status]}>{STATUS_LABEL[status]}</Pill>;
+export function stageOf(job: { status: JobStatus; voided?: unknown; kind?: string; paid: number; total: number }): Stage {
+  if (job.voided) return 'voided';
+  if (job.kind === 'sale') return 'sold';
+  if (job.status === 'dispatched') return 'gone';
+  return job.paid >= job.total ? 'ready' : 'waiting';
+}
+
+export function StagePill({ job }: { job: Parameters<typeof stageOf>[0] }) {
+  const stage = stageOf(job);
+  return <Pill tone={STAGE_TONE[stage]}>{STAGE_LABEL[stage]}</Pill>;
 }
 
 /** What is offered today. Switched-off services and attendants who left are not returned. */

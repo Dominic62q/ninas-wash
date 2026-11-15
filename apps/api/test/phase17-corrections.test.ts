@@ -276,3 +276,33 @@ describe('the discount on a finished, unpaid wash', () => {
     expect(res.json().job).toMatchObject({ discount: 500, total: 4500 });
   });
 });
+
+describe('adding a forgotten service to a finished wash', () => {
+  it('lets a manager add it before payment, earns its commission now, and keeps a note on record', async () => {
+    const first = await who();
+    const second = await who();
+    const job = await book([{ serviceId: wash, attendantIds: [first] }], { start: true });
+    expect((await advance(job.id, 'completed')).statusCode).toBe(200);
+    expect(await owed(second)).toBe(0);
+
+    const res = await call(manager, 'POST', `/api/jobs/${job.id}/lines`, { serviceId: seats, quantity: 2, attendantIds: [second] });
+    expect(res.statusCode).toBe(201);
+    const after = res.json().job as Detail;
+    expect(after).toMatchObject({ status: 'completed', total: 7000 });
+    expect(after.lines.map((l) => l.name).sort()).toEqual(['P17 Seats', 'P17 Wash']);
+    expect(await owed(second)).toBe(400); // fixed GH₵2.00 each, two of them
+    expect(after.history.find((h) => h.action === 'job.add_line')?.note).toBe('Added after the wash was finished');
+  });
+
+  it('is for people who may correct jobs, and stops once money has been taken', async () => {
+    const job = await book([{ serviceId: wash, attendantIds: [await who()] }], { start: true });
+    await advance(job.id, 'completed');
+    expect((await call(cashier, 'POST', `/api/jobs/${job.id}/lines`, { serviceId: seats, quantity: 1, attendantIds: [await who()] })).statusCode).toBe(409);
+
+    await call(cashier, 'POST', `/api/jobs/${job.id}/payments`, { methodId: 1, amount: 1000, idemKey: newKey() });
+    const late = await call(manager, 'POST', `/api/jobs/${job.id}/lines`, { serviceId: seats, quantity: 1, attendantIds: [await who()] });
+    expect(late.statusCode).toBe(409);
+    expect(late.json().error.code).toBe('has_payments');
+    expect((await jobOf(job.id)).lines).toHaveLength(1);
+  });
+});

@@ -8,19 +8,11 @@ import { HttpError } from './errors.js';
  * One person does one service at a time. "Busy" means on a service of a job that is in progress (started, not finished).
  * A job that is only booked does not hold anybody, so a pending job can be set up freely.
  *
- * `crew` is the person on each service being started, added or assigned (one entry each, repeats allowed so a
- * second service for the same person is caught). `onJob` is who is already on the job's other services.
- * Returns what to tell the cashier, or null when all is well.
+ * One job has one attendant for all its services, so the same person on several services of the same job is fine.
+ * `crew` is who is being started, added or assigned. Returns what to tell the cashier, or null when all is well.
  */
-export async function busyProblem(tx: DbOrTx, { jobId, crew, onJob = [] }: { jobId: number | null; crew: number[]; onJob?: number[] }): Promise<string | null> {
+export async function busyProblem(tx: DbOrTx, { jobId, crew }: { jobId: number | null; crew: number[] }): Promise<string | null> {
   if (crew.length === 0) return null;
-
-  const all = [...onJob, ...crew];
-  const repeated = all.find((id, i) => all.indexOf(id) !== i);
-  if (repeated !== undefined) {
-    const [person] = await tx.select({ name: attendants.name }).from(attendants).where(eq(attendants.id, repeated));
-    return `${person?.name ?? 'Someone'} is already on another service of this job. One person does one service at a time.`;
-  }
 
   const busyNow = await tx
     .select({ name: attendants.name, plate: vehicles.plate, service: services.name, jobId: jobs.id })

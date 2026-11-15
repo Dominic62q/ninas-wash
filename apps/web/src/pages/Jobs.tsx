@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { CAR_TYPES, formatGHS, type JobCard, type JobStatus } from '@niinas/shared';
+import { CAR_TYPES, formatGHS, type JobCard } from '@niinas/shared';
 import { Mark } from '../components/Mark';
 import { Plate } from '../components/Plate';
-import { STATUS_LABEL } from '../components/JobBits';
+import { STAGE_LABEL, stageOf } from '../components/JobBits';
 import { useJobSteps, type JobStep } from '../components/JobActions';
 import { FormError, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
@@ -12,10 +12,11 @@ import { useAuth } from '../lib/auth';
 import { addDays, clock, shortDate, ymd } from '../lib/format';
 import { JobsList } from './JobsList';
 
-const COLUMNS = ['pending', 'in_progress', 'completed'] as const;
+// The board shows what staff care about, not the steps behind it: a car is either waiting to be paid for or ready to go.
+const COLUMNS = ['waiting', 'ready'] as const;
 type Column = (typeof COLUMNS)[number];
 
-const EMPTY: Record<Column, string> = { pending: 'No cars waiting', in_progress: 'No cars being washed', completed: 'Nothing finished yet' };
+const EMPTY: Record<Column, string> = { waiting: 'No cars waiting for payment', ready: 'No cars ready to dispatch' };
 
 const CAR_LABEL: Record<(typeof CAR_TYPES)[number], string> = { saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup', van: 'Van', other: 'Other' };
 
@@ -41,13 +42,11 @@ function useNow(ms = 30_000): number {
   return now;
 }
 
-/** When the job reached its current step: today shows the time, older jobs show the date as well. */
+/** When the car came in: today shows the time, older jobs show the date as well. */
 function since(job: JobCard): string {
-  const at = job.status === 'completed' ? job.completedAt : job.status === 'in_progress' ? job.startedAt : job.createdAt;
-  if (!at) return '';
-  const verb = job.status === 'completed' ? 'Done' : job.status === 'in_progress' ? 'Started' : 'Booked';
+  const at = job.startedAt ?? job.createdAt;
   const today = new Date(at).toDateString() === new Date().toDateString();
-  return `${verb} ${today ? clock(at) : `${shortDate(at)}, ${clock(at)}`}`;
+  return `In ${today ? clock(at) : `${shortDate(at)}, ${clock(at)}`}`;
 }
 
 function PayMark({ total, paid }: { total: number; paid: number }) {
@@ -103,53 +102,37 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
       </Link>
       {/* On a phone the action is a slim fixed-width button so the car's details keep the room; labels shrink to one word. On a computer it is a footer under the details. */}
       <div className="flex shrink-0 gap-2 pr-3 lg:items-center lg:justify-between lg:border-t lg:border-line-2 lg:px-4 lg:py-3">
-        <span className="max-lg:hidden">{(job.status === 'completed' || job.paid > 0) && <PayMark total={job.total} paid={job.paid} />}</span>
-        {job.status === 'pending' &&
-          (job.needsAttendant ? (
-            <Link to={detail} className={`btn no-underline ${ACT}`}>
-              Assign
-            </Link>
-          ) : (
-            <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('start', job.id, job.plate ?? 'Walk-in')}>
-              <span className="lg:hidden">Start</span>
-              <span className="max-lg:hidden">Start wash</span>
-            </button>
-          ))}
-        {job.status === 'in_progress' && (
-          <>
-            {/* The quick way is a payment that finishes the job. A phone card has room for one button, so it gets Pay when there is money to take. */}
-            <button
-              type="button"
-              className={`btn whitespace-nowrap ${ACT} ${QUIET} ${owes ? 'max-lg:hidden' : 'btn-primary'}`}
-              onClick={() => onAsk('complete', job.id, job.plate ?? 'Walk-in')}
-            >
-              <span className="lg:hidden">Done</span>
-              <span className="max-lg:hidden">Mark complete</span>
-            </button>
-            {owes && (
-              <Link to={`${detail}?pay=1`} className={`btn btn-primary whitespace-nowrap no-underline ${ACT} ${QUIET}`}>
-                Pay
-              </Link>
-            )}
-          </>
-        )}
-        {job.status === 'completed' &&
-          (job.total > job.paid ? (
-            can('payment.record') ? (
-              <Link to={`${detail}?pay=1`} className={`btn btn-primary whitespace-nowrap no-underline ${ACT} ${QUIET}`}>
-                <span className="lg:hidden">Pay</span>
-                <span className="max-lg:hidden">Take payment</span>
-              </Link>
-            ) : (
-              <p className="w-[84px] py-2 text-center text-sm font-medium text-amber lg:w-auto lg:py-0">Owes</p>
-            )
-          ) : can('job.dispatch') ? (
+        <span className="max-lg:hidden">{job.paid > 0 && <PayMark total={job.total} paid={job.paid} />}</span>
+        {stageOf(job) === 'ready' ? (
+          can('job.dispatch') ? (
             <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('dispatch', job.id, job.plate ?? 'Walk-in')}>
               Dispatch
             </button>
           ) : (
             <p className="w-[84px] py-2 text-center text-sm font-medium text-green lg:w-auto lg:py-0">Ready</p>
-          ))}
+          )
+        ) : job.needsAttendant ? (
+          <Link to={detail} className={`btn no-underline ${ACT}`}>
+            Assign
+          </Link>
+        ) : can('payment.record') ? (
+          <Link to={`${detail}?pay=1`} className={`btn btn-primary whitespace-nowrap no-underline ${ACT} ${QUIET}`}>
+            <span className="lg:hidden">Pay</span>
+            <span className="max-lg:hidden">Take payment</span>
+          </Link>
+        ) : job.status === 'pending' ? (
+          <button type="button" className={`btn btn-primary ${ACT} ${QUIET}`} onClick={() => onAsk('start', job.id, job.plate ?? 'Walk-in')}>
+            <span className="lg:hidden">Start</span>
+            <span className="max-lg:hidden">Start wash</span>
+          </button>
+        ) : job.status === 'in_progress' ? (
+          <button type="button" className={`btn btn-primary whitespace-nowrap ${ACT} ${QUIET}`} onClick={() => onAsk('complete', job.id, job.plate ?? 'Walk-in')}>
+            <span className="lg:hidden">Done</span>
+            <span className="max-lg:hidden">Mark complete</span>
+          </button>
+        ) : (
+          <p className="w-[84px] py-2 text-center text-sm font-medium text-amber lg:w-auto lg:py-0">Owes</p>
+        )}
       </div>
     </li>
   );
@@ -215,10 +198,10 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
 
   const now = useNow();
   const jobs = board.data?.jobs ?? [];
-  const byStatus = (s: JobStatus) => jobs.filter((j) => j.status === s);
+  const byStage = (c: Column) => jobs.filter((j) => stageOf({ ...j, voided: false }) === c);
   const emptyText = (c: Column) => (search ? 'Nothing matches' : day ? 'No jobs that day' : EMPTY[c]);
   // Open on the column that has cars in it unless the person has picked one.
-  const tab: Column = chosen ?? (day ? (['in_progress', 'pending', 'completed'] as const) : (['in_progress', 'pending'] as const)).find((c) => byStatus(c).length > 0) ?? 'in_progress';
+  const tab: Column = chosen ?? COLUMNS.find((c) => byStage(c).length > 0) ?? 'waiting';
 
   return (
     <>
@@ -226,7 +209,7 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
 
       <DayBar day={day} onChange={onDay} />
 
-      <div role="tablist" aria-label="Job status" className="flex gap-0.5 rounded-[10px] bg-line-2 p-0.5 lg:max-w-[480px]">
+      <div role="tablist" aria-label="Jobs" className="flex gap-0.5 rounded-[10px] bg-line-2 p-0.5 lg:max-w-[480px]">
         {COLUMNS.map((c) => (
           <button
             key={c}
@@ -238,7 +221,7 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
             onClick={() => setChosen(c)}
             className={`flex min-h-9 flex-1 cursor-pointer items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium transition-colors ${tab === c ? 'bg-surface text-navy shadow-card' : 'text-ink-2'}`}
           >
-            {STATUS_LABEL[c]} <span className="num ml-1">{byStatus(c).length}</span>
+            {STAGE_LABEL[c]} <span className="num ml-1">{byStage(c).length}</span>
           </button>
         ))}
       </div>
@@ -252,11 +235,11 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
       )}
 
       <section id="board-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-        {byStatus(tab).length === 0 && board.isSuccess ? (
+        {byStage(tab).length === 0 && board.isSuccess ? (
           <p className="border border-dashed border-line px-4 py-8 text-center text-sm text-ink-3 max-lg:rounded-[14px]">{emptyText(tab)}</p>
         ) : (
           <ul className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3">
-            {byStatus(tab).map((job, i) => (
+            {byStage(tab).map((job, i) => (
               <Card key={job.id} job={job} index={i} now={now} onAsk={steps.ask} />
             ))}
           </ul>

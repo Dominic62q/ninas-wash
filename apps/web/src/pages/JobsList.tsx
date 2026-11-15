@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { formatGHS, JOB_STATUSES, type JobListResult, type JobListRow } from '@niinas/shared';
+import { formatGHS, type JobListResult, type JobListRow } from '@niinas/shared';
 import { Select } from '../components/Dropdown';
 import { Plate } from '../components/Plate';
-import { STATUS_LABEL } from '../components/JobBits';
+import { STAGE_LABEL, STAGE_TONE, stageOf } from '../components/JobBits';
 import { Mark, type MarkTone } from '../components/Mark';
 import { EmptyRow, FormError, SkeletonRows, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
@@ -21,9 +21,9 @@ const RANGES = [
 type Range = (typeof RANGES)[number]['value'];
 
 const STATUS_OPTIONS = [
-  { value: 'all', label: 'All statuses' },
-  ...JOB_STATUSES.map((s) => ({ value: s as string, label: STATUS_LABEL[s] })),
+  { value: 'all', label: 'All jobs' },
   { value: 'owing', label: 'Owing money' },
+  { value: 'dispatched', label: 'Dispatched' },
   { value: 'voided', label: 'Voided' },
 ];
 
@@ -62,7 +62,6 @@ const COLS = 'lg:grid-cols-[48px_132px_minmax(0,1fr)_minmax(0,1fr)_148px_88px] x
 /** Only finished jobs can owe: a car still being washed has simply not been paid for yet. */
 const owed = (row: JobListRow) => (!row.voided && (row.status === 'completed' || row.status === 'dispatched') && row.paid < row.total ? row.total - row.paid : 0);
 
-const STATUS_TONE: Record<JobListRow['status'], MarkTone> = { pending: 'amber', in_progress: 'blue', completed: 'green', dispatched: 'grey' };
 
 /** `short` leaves the "Owes" amount out; the phone row shows it on its own line instead. */
 function RowStatus({ row, short }: { row: JobListRow; short?: boolean }) {
@@ -70,7 +69,7 @@ function RowStatus({ row, short }: { row: JobListRow; short?: boolean }) {
   const owes = owed(row);
   return (
     <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Mark tone={STATUS_TONE[row.status]}>{row.kind === 'sale' ? 'Sold' : STATUS_LABEL[row.status]}</Mark>
+      <Mark tone={STAGE_TONE[stageOf(row)] as MarkTone}>{STAGE_LABEL[stageOf(row)]}</Mark>
       {owes > 0 && !short && <span className="num text-xs font-medium text-amber">Owes {formatGHS(owes)}</span>}
     </span>
   );

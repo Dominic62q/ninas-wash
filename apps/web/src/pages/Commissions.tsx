@@ -223,7 +223,7 @@ export function Commissions() {
 
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
-      <p className="text-sm text-ink-2">Commission is earned when a car is marked Completed. Open a name to see the detail and to pay it out.</p>
+      <p className="text-sm text-ink-2">Commission is earned when the wash is finished, which happens when the car is paid for or dispatched. Open a name to see the detail and to pay it out.</p>
       <FormError message={overview.isError ? errorMessage(overview.error) : null} />
 
       <section aria-label="Commission owed" className="border border-line bg-surface max-lg:overflow-hidden max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card">
