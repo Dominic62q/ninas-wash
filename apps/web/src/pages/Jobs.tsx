@@ -250,6 +250,7 @@ function Board({ search, day, onDay }: { search: string; day: string; onDay: (da
         )}
       </section>
       {steps.dialog}
+      {steps.clashDialog}
     </>
   );
 }

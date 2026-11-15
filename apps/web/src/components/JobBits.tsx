@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { MAX_LINE_QUANTITY, type JobStatus, type AttendantDto, type ServiceDto } from '@niinas/shared';
 import { api } from '../lib/api';
-import { MultiSelect } from './Dropdown';
-import { Pill } from './ui';
+import { ApiError } from '../lib/api';
+import { useAuth } from '../lib/auth';
+import { Select } from './Dropdown';
+import { Field, Pill } from './ui';
 
 export const STATUS_LABEL: Record<JobStatus, string> = {
   pending: 'Pending',
@@ -26,7 +28,7 @@ export function useAttendants() {
   return useQuery({ queryKey: ['attendants', 'active'], queryFn: () => api<{ attendants: AttendantDto[] }>('/attendants') });
 }
 
-/** A dropdown for picking the people who wash a service. Two or more share the commission equally. */
+/** A dropdown for picking who washes a service: one person per service. The value is a list of zero or one id. */
 export function AttendantPicker({
   label,
   options,
@@ -38,10 +40,23 @@ export function AttendantPicker({
   value: number[];
   onChange: (ids: number[]) => void;
 }) {
-  return <MultiSelect label={label} placeholder="Pick attendants" options={options.map((a) => ({ value: a.id, label: a.name }))} value={value} onChange={onChange} />;
+  const choices = [{ value: '', label: 'Pick an attendant' }, ...options.map((a) => ({ value: String(a.id), label: a.name }))];
+  return <Select label={label} value={value[0] === undefined ? '' : String(value[0])} options={choices} onChange={(v) => onChange(v === '' ? [] : [Number(v)])} />;
 }
 
-export const sharedNote = (count: number) => (count >= 2 ? `Shared equally between ${count}` : null);
+/**
+ * One person does one service at a time. When the server says someone is busy, a manager can still go ahead by giving a reason;
+ * everyone else just sees the message. Put it under a form's error and send `note` as `busyNote`.
+ */
+export function BusyNote({ error, note, onNote }: { error: unknown; note: string; onNote: (v: string) => void }) {
+  const { can } = useAuth();
+  if (!(error instanceof ApiError) || error.code !== 'attendant_busy' || !can('job.override_busy')) return null;
+  return (
+    <Field label="Why is it fine to go ahead?" hint="Your name and this reason go on record. Save again to put them on.">
+      <input className="input" value={note} onChange={(e) => onNote(e.target.value)} maxLength={200} autoComplete="off" placeholder="The first car is waiting on the customer" />
+    </Field>
+  );
+}
 
 /** How many of a service. Minus and plus, with the number between; never goes below one or above the limit. */
 export function QuantityStepper({ label, value, onChange, max = MAX_LINE_QUANTITY }: { label: string; value: number; onChange: (next: number) => void; max?: number }) {

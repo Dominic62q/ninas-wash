@@ -36,10 +36,11 @@ let cashier: string;
 let seat: number;
 let kofi: number;
 
+let crew = 0;
 async function bookedJob(extra: Record<string, unknown> = {}) {
   const res = await call(cashier, 'POST', '/api/jobs', {
     plate: newPlate(),
-    lines: [{ serviceId: seat, quantity: 3, attendantIds: [kofi] }],
+    lines: [{ serviceId: seat, quantity: 3, attendantIds: [(await call(owner, 'POST', '/api/attendants', { name: `P13 Hand ${++crew}`, phone: null })).json().attendant.id as number] }],
     start: true,
     ...extra,
   });

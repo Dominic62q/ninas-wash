@@ -45,7 +45,7 @@ function MethodForm({ method, onDone }: { method: PayMethodDto | null; onDone: (
           <Check label="The money goes in the cash drawer" checked={inDrawer} onChange={setInDrawer} disabled={lockDrawer} hint="Cash does. MoMo and bank transfers do not. The daily close counts only what is in the drawer." />
           {lockDrawer && <p className="pl-8 text-xs text-ink-3">This has already been used, so this setting is fixed. Add a new method instead.</p>}
         </div>
-        <Check label="Ask for a reference" checked={requiresReference} onChange={setRequiresReference} hint="The cashier must type the MoMo or transfer reference before saving." />
+        <Check label="Ask for a reference" checked={requiresReference} onChange={setRequiresReference} hint="On: the cashier cannot save without it. Off: the box is still there, but optional." />
         {method && <Check label="Available to use" checked={active} onChange={setActive} hint="Switch off a way you no longer take. Old records keep it." />}
       </div>
       <FormError message={save.isError ? errorMessage(save.error) : null} />

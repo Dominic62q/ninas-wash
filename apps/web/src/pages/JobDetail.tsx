@@ -16,7 +16,7 @@ import {
   type ServiceKind,
 } from '@niinas/shared';
 import { Plate } from '../components/Plate';
-import { AttendantPicker, QuantityStepper, StatusPill, sharedNote, useAttendants, useServices } from '../components/JobBits';
+import { AttendantPicker, BusyNote, QuantityStepper, StatusPill, useAttendants, useServices } from '../components/JobBits';
 import { SlideToConfirm } from '../components/SlideToConfirm';
 import { TipPanel } from '../components/TipPanel';
 import { useJobSteps, type JobStep } from '../components/JobActions';
@@ -72,34 +72,35 @@ function AssignPanel({ job, lineId, onClose }: { job: JobDetailDto; lineId: numb
   const toast = useToast();
   const line = job.lines.find((l) => l.id === lineId);
   const [ids, setIds] = useState<number[]>([]);
+  const [busyNote, setBusyNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const save = useMutation({
     mutationFn: (body: unknown) => api(`/jobs/${job.id}/lines/${lineId}/attendants`, { method: 'PUT', body }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      toast.success(ids.length > 1 ? `${ids.length} attendants assigned` : 'Attendant assigned');
+      toast.success('Attendant assigned');
       onClose();
     },
   });
 
   function submit() {
-    const parsed = assignInput.safeParse({ attendantIds: ids });
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Pick at least one attendant');
+    const parsed = assignInput.safeParse({ attendantIds: ids, busyNote });
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Pick an attendant');
     setError(null);
     save.mutate(parsed.data);
   }
 
   return (
-    <Panel open={lineId !== null} onClose={onClose} title="Assign attendants">
+    <Panel open={lineId !== null} onClose={onClose} title="Assign an attendant">
       {line && (
         <>
           <p className="text-ink-2">
-            Who is washing <strong className="text-ink">{line.name}</strong>? Cannot be changed once saved.
+            Who is washing <strong className="text-ink">{line.name}</strong>? One person does one service at a time.
           </p>
-          <AttendantPicker label="Attendants" options={attendants.data?.attendants ?? []} value={ids} onChange={(next) => { setIds(next); setError(null); }} />
-          {sharedNote(ids.length) && <p className="text-xs text-ink-3">{sharedNote(ids.length)}</p>}
+          <AttendantPicker label="Attendant" options={attendants.data?.attendants ?? []} value={ids} onChange={(next) => { setIds(next); setError(null); }} />
           <FormError message={error ?? (save.isError ? errorMessage(save.error) : null)} />
+          <BusyNote error={save.error} note={busyNote} onNote={setBusyNote} />
           <button type="button" className="btn btn-primary" disabled={save.isPending} onClick={submit}>
             {save.isPending ? 'Saving…' : 'Save'}
           </button>
@@ -116,6 +117,7 @@ function AddServicePanel({ job, kind, open, onClose }: { job: JobDetailDto; kind
   const toast = useToast();
   const [serviceId, setServiceId] = useState<number | null>(null);
   const [ids, setIds] = useState<number[]>([]);
+  const [busyNote, setBusyNote] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const onJob = new Set(job.lines.map((l) => l.serviceId));
@@ -137,7 +139,7 @@ function AddServicePanel({ job, kind, open, onClose }: { job: JobDetailDto; kind
 
   function submit() {
     if (serviceId === null) return setError(isItem ? 'Choose an item' : 'Choose a service');
-    const parsed = addLineInput.safeParse({ serviceId, quantity, attendantIds: isItem ? [] : ids });
+    const parsed = addLineInput.safeParse({ serviceId, quantity, attendantIds: isItem ? [] : ids, busyNote });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Check the details');
     setError(null);
     save.mutate(parsed.data);
@@ -176,13 +178,13 @@ function AddServicePanel({ job, kind, open, onClose }: { job: JobDetailDto; kind
             <p className="text-xs text-ink-3">Items are sold off the shelf, so they need no attendant and earn no commission.</p>
           ) : (
             <>
-              <AttendantPicker label="Attendants" options={attendants.data?.attendants ?? []} value={ids} onChange={setIds} />
-              {sharedNote(ids.length) && <p className="text-xs text-ink-3">{sharedNote(ids.length)}</p>}
+              <AttendantPicker label="Attendant" options={attendants.data?.attendants ?? []} value={ids} onChange={setIds} />
             </>
           )}
         </div>
       )}
       <FormError message={error ?? (save.isError ? errorMessage(save.error) : null)} />
+      <BusyNote error={save.error} note={busyNote} onNote={setBusyNote} />
       <button type="button" className="btn btn-primary" disabled={save.isPending || options.length === 0} onClick={submit}>
         {save.isPending ? 'Adding…' : 'Add to job'}
       </button>
@@ -434,7 +436,7 @@ export function JobDetail() {
           )}
         </div>
       )}
-      {open && job.status === 'pending' && missing && <p className="-mt-2 text-sm font-medium text-amber">Assign attendants to start</p>}
+      {open && job.status === 'pending' && missing && <p className="-mt-2 text-sm font-medium text-amber">Assign an attendant to start</p>}
       {/* A finished job: the main step on its own line, everything else together on one row beneath it. */}
       {!open && !job.voided && (
         <div className="flex flex-wrap gap-2">
@@ -492,7 +494,7 @@ export function JobDetail() {
                     <p className="text-sm text-ink-3">Item</p>
                   ) : open ? (
                     <button type="button" className="tap text-sm text-amber underline" onClick={() => setDialog({ kind: 'assign', lineId: l.id })}>
-                      Assign attendants
+                      Assign attendant
                     </button>
                   ) : (
                     <p className="text-sm text-ink-3">None</p>
@@ -523,7 +525,7 @@ export function JobDetail() {
                     <p className="text-sm text-ink-3">Item</p>
                   ) : open ? (
                     <button type="button" className="tap text-sm text-amber underline" onClick={() => setDialog({ kind: 'assign', lineId: l.id })}>
-                      Assign attendants
+                      Assign attendant
                     </button>
                   ) : (
                     <p className="text-sm text-ink-3">None</p>
@@ -688,6 +690,7 @@ export function JobDetail() {
       <VoidPaymentPanel key={`voidpay-${dialog?.kind === 'voidPayment' ? dialog.paymentId : 'none'}`} job={job} payment={voidingPayment} onClose={close} />
       <DispatchPanel job={job} open={dialog?.kind === 'dispatch'} onClose={close} />
       {steps.dialog}
+      {steps.clashDialog}
       {canTip && <TipPanel open={dialog?.kind === 'tip'} onClose={close} attendants={tipRecipients} job={{ id: job.id, plate: label }} />}
     </div>
   );

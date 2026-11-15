@@ -54,9 +54,16 @@ const report = async (from: string, to: string) => {
 
 let serviceId: number;
 let attendantId: number;
+let spareId = 0;
+let spareCounter = 0;
+/** A new person, for a job that stays half done: one person does one service at a time. */
+async function spare(): Promise<number> {
+  spareId = (await call(owner, 'POST', '/api/attendants', { name: `P6 Spare ${++spareCounter}`, phone: null })).json().attendant.id;
+  return spareId;
+}
 
-async function bookJob(start = true): Promise<number> {
-  const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId, attendantIds: [attendantId] }], start });
+async function bookJob(start = true, who = attendantId): Promise<number> {
+  const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId, attendantIds: [who] }], start });
   expect(made.statusCode).toBe(201);
   return made.json().job.id as number;
 }
@@ -93,7 +100,7 @@ describe('the dashboard', () => {
   it('counts the day: takings by method, cars by stage, money still owed', async () => {
     const before = await dashboard(manager);
     const waiting = await bookJob(false);
-    const washing = await bookJob(true);
+    const washing = await bookJob(true, await spare());
     const ready = await finishedJob();
     expect((await pay(ready, { methodId: 1, amount: 2000 })).statusCode).toBe(201);
     expect((await pay(washing, { methodId: 2, amount: 700, reference: 'MP260101.1234.A12345' })).statusCode).toBe(201);

@@ -91,7 +91,7 @@ describe('booking a job', () => {
       plate,
       makeModel: 'Toyota Corolla',
       carType: 'saloon',
-      lines: [{ serviceId: fullWash, attendantIds: [ama] }, { serviceId: polish, attendantIds: [ama, kofi] }],
+      lines: [{ serviceId: fullWash, attendantIds: [ama] }, { serviceId: polish, attendantIds: [kofi] }],
     });
     expect(res.statusCode).toBe(201);
     const job = res.json().job;
@@ -112,20 +112,21 @@ describe('booking a job', () => {
     expect(wash).toMatchObject({ priceAtSale: 5000, commissionKindAtSale: 'percent', commissionValueAtSale: 1800 });
   });
 
-  it('splits a line equally and gives the odd share to the first person', async () => {
+  it('puts one person on a service, never two', async () => {
     const res = await call(cashier, 'POST', '/api/jobs', {
       plate: newPlate(),
-      lines: [{ serviceId: fullWash, attendantIds: [ama, kofi, kwesi] }],
+      lines: [{ serviceId: fullWash, attendantIds: [ama, kofi] }],
     });
-    const shares = res.json().job.lines[0].attendants.map((a: { shareBp: number }) => a.shareBp);
-    expect(shares).toEqual([3334, 3333, 3333]);
-    expect(shares.reduce((a: number, b: number) => a + b, 0)).toBe(10_000);
+    expect(res.statusCode).toBe(400);
+    const one = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: fullWash, attendantIds: [kwesi] }] });
+    expect(one.statusCode).toBe(201);
+    expect(one.json().job.lines[0].attendants.map((a: { shareBp: number }) => a.shareBp)).toEqual([10_000]);
   });
 
   it('starts straight away when asked, and records the move', async () => {
     const res = await call(cashier, 'POST', '/api/jobs', {
       plate: newPlate(),
-      lines: [{ serviceId: fullWash, attendantIds: [ama] }],
+      lines: [{ serviceId: fullWash, attendantIds: [await makeAttendant('P2 Esi')] }],
       start: true,
     });
     const job = res.json().job;
@@ -227,9 +228,11 @@ describe('moving a job along', () => {
     expect(card.needsAttendant).toBe(true);
 
     const lineId = (await call(cashier, 'GET', `/api/jobs/${job.id}`)).json().job.lines[0].id;
-    const assigned = await call(cashier, 'PUT', `/api/jobs/${job.id}/lines/${lineId}/attendants`, { attendantIds: [kofi, kwesi] });
+    const two = await call(cashier, 'PUT', `/api/jobs/${job.id}/lines/${lineId}/attendants`, { attendantIds: [kofi, kwesi] });
+    expect(two.statusCode).toBe(400);
+    const assigned = await call(cashier, 'PUT', `/api/jobs/${job.id}/lines/${lineId}/attendants`, { attendantIds: [await makeAttendant('P2 Yaa')] });
     expect(assigned.statusCode).toBe(200);
-    expect(assigned.json().job.lines[0].attendants).toHaveLength(2);
+    expect(assigned.json().job.lines[0].attendants).toHaveLength(1);
 
     const again = await call(cashier, 'PUT', `/api/jobs/${job.id}/lines/${lineId}/attendants`, { attendantIds: [ama] });
     expect(again.statusCode).toBe(409);
@@ -259,7 +262,7 @@ describe('moving a job along', () => {
   });
 
   it('keeps a history of who did what', async () => {
-    const job = await book([ama]);
+    const job = await book([await makeAttendant('P2 Adwoa')]);
     await call(cashier, 'POST', `/api/jobs/${job.id}/status`, { to: 'in_progress' });
     await call(cashier, 'PATCH', `/api/jobs/${job.id}`, { discount: 100 });
     const detail = (await call(cashier, 'GET', `/api/jobs/${job.id}`)).json().job;
@@ -268,18 +271,90 @@ describe('moving a job along', () => {
   });
 });
 
+describe('one person, one service at a time', () => {
+  const book = async (attendantIds: number[], start = false, extra: Record<string, unknown> = {}) =>
+    call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: fullWash, attendantIds }], start, ...extra });
+
+  it('will not start a second job for someone who is busy on a running one', async () => {
+    const busy = await makeAttendant('P2 Busy One');
+    expect((await book([busy], true)).statusCode).toBe(201);
+    const second = await book([busy], true);
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error.code).toBe('attendant_busy');
+    expect(second.json().error.message).toMatch(/P2 Busy One is busy on/);
+    // Booking for later is fine: a pending job holds nobody.
+    expect((await book([busy])).statusCode).toBe(201);
+  });
+
+  it('holds the start of a booked job while the person is busy, and frees them when the job is done', async () => {
+    const who = await makeAttendant('P2 Busy Two');
+    const first = (await book([who], true)).json().job as { id: number };
+    const waiting = (await book([who])).json().job as { id: number };
+    const blocked = await call(cashier, 'POST', `/api/jobs/${waiting.id}/status`, { to: 'in_progress' });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.code).toBe('attendant_busy');
+    expect((await call(cashier, 'POST', `/api/jobs/${first.id}/status`, { to: 'completed' })).statusCode).toBe(200);
+    expect((await call(cashier, 'POST', `/api/jobs/${waiting.id}/status`, { to: 'in_progress' })).statusCode).toBe(200);
+  });
+
+  it('will not put the same person on two services of one job', async () => {
+    const who = await makeAttendant('P2 Busy Three');
+    const res = await call(cashier, 'POST', '/api/jobs', {
+      plate: newPlate(),
+      lines: [{ serviceId: fullWash, attendantIds: [who] }, { serviceId: polish, attendantIds: [who] }],
+      start: true,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.message).toMatch(/already on another service of this job/);
+  });
+
+  it('lets a manager go ahead with a reason, and writes it in the log; a cashier cannot', async () => {
+    const who = await makeAttendant('P2 Busy Four');
+    expect((await book([who], true)).statusCode).toBe(201);
+
+    const noReason = await book([who], true, { busyNote: '' });
+    expect(noReason.statusCode).toBe(409);
+
+    const cashierTry = await book([who], true, { busyNote: 'Regular car, quick rinse' });
+    expect(cashierTry.statusCode).toBe(403);
+
+    const made = await call(manager, 'POST', '/api/jobs', {
+      plate: newPlate(),
+      lines: [{ serviceId: fullWash, attendantIds: [who] }],
+      start: true,
+      busyNote: 'Regular car, quick rinse',
+    });
+    expect(made.statusCode).toBe(201);
+    const actions = made.json().job.history.map((h: { action: string }) => h.action);
+    expect(actions).toContain('job.override_busy');
+  });
+
+  it('holds when a service is added or someone is assigned to a running job', async () => {
+    const worker = await makeAttendant('P2 Busy Five');
+    const other = await makeAttendant('P2 Busy Six');
+    expect((await book([worker], true)).statusCode).toBe(201);
+    const running = (await book([other], true)).json().job as { id: number };
+    const add = await call(cashier, 'POST', `/api/jobs/${running.id}/lines`, { serviceId: polish, attendantIds: [worker] });
+    expect(add.statusCode).toBe(409);
+    expect(add.json().error.code).toBe('attendant_busy');
+    const same = await call(cashier, 'POST', `/api/jobs/${running.id}/lines`, { serviceId: polish, attendantIds: [other] });
+    expect(same.statusCode).toBe(409);
+    expect(same.json().error.message).toMatch(/already on another service of this job/);
+  });
+});
+
 describe('the board', () => {
   it('lists open jobs with their services and people, and searches by plate or owner', async () => {
     const plate = newPlate();
     await call(cashier, 'POST', '/api/jobs', {
       plate,
-      lines: [{ serviceId: fullWash, attendantIds: [ama, kofi] }],
+      lines: [{ serviceId: fullWash, attendantIds: [ama] }],
       customer: { name: 'Yaw Boadu', phone: '0201234567', okToText: false },
     });
     const all = (await call(cashier, 'GET', '/api/jobs/board')).json().jobs as { plate: string; services: string[]; attendants: string[] }[];
     const card = all.find((j) => j.plate === plate)!;
     expect(card.services).toEqual(['P2 Full wash']);
-    expect(card.attendants).toEqual(['P2 Ama', 'P2 Kofi']);
+    expect(card.attendants).toEqual(['P2 Ama']);
 
     const byPlate = (await call(cashier, 'GET', `/api/jobs/board?q=${encodeURIComponent(plate.replace(/[ -]/g, ''))}`)).json().jobs;
     expect(byPlate.map((j: { plate: string }) => j.plate)).toEqual([plate]);

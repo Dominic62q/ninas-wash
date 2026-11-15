@@ -35,6 +35,7 @@ let manager: string;
 let cashier: string;
 let wash: number; // GH₵50.00
 let ama: number;
+let kofi: number; // a second person, for a job left half done
 let plateCounter = 0;
 let keyCounter = 0;
 const newPlate = () => `GP ${String(2000 + ++plateCounter)}-26`;
@@ -73,6 +74,7 @@ beforeAll(async () => {
   cashier = await signIn('p3.cashier');
   wash = (await call(owner, 'POST', '/api/services', { name: 'P3 Wash', price: 5000, commissionKind: 'percent', commissionValue: 1500, active: true })).json().service.id;
   ama = (await call(owner, 'POST', '/api/attendants', { name: 'P3 Ama', phone: null })).json().attendant.id;
+  kofi = (await call(owner, 'POST', '/api/attendants', { name: 'P3 Kofi', phone: null })).json().attendant.id;
 });
 
 afterAll(async () => {
@@ -97,14 +99,15 @@ describe('taking payments', () => {
     expect(after.history.map((h) => h.action)).toContain('payment.record');
   });
 
-  it('splits one job across cash and MoMo, and MoMo needs a reference', async () => {
+  it('splits one job across cash and MoMo, and a reference is optional', async () => {
     const job = await finishedJob();
-    const noRef = await pay(cashier, job.id, { methodId: 2, amount: 3000 });
-    expect(noRef.statusCode).toBe(400);
+    // MoMo takes a reference but does not insist on one, so a payment with none is saved.
+    const noRef = await pay(cashier, job.id, { methodId: 2, amount: 1000 });
+    expect(noRef.statusCode).toBe(201);
     await pay(cashier, job.id, { methodId: 1, amount: 2000 });
-    const momo = await pay(cashier, job.id, { methodId: 2, amount: 3000, reference: 'MP261030.0001' });
+    const momo = await pay(cashier, job.id, { methodId: 2, amount: 2000, reference: 'MP261030.0001' });
     expect(momo.json().job).toMatchObject({ paid: 5000, balance: 0 });
-    expect(momo.json().job.payments.map((p: { method: string }) => p.method)).toEqual(['Cash', 'MoMo']);
+    expect(momo.json().job.payments.map((p: { method: string }) => p.method)).toEqual(['MoMo', 'Cash', 'MoMo']);
   });
 
   it('saves once when the same request arrives twice', async () => {
@@ -170,7 +173,7 @@ describe('voiding a payment', () => {
 
 describe('dispatching the car', () => {
   it('needs the wash to be finished', async () => {
-    const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [ama] }], start: true });
+    const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [kofi] }], start: true });
     const res = await call(cashier, 'POST', `/api/jobs/${made.json().job.id}/dispatch`, {});
     expect(res.statusCode).toBe(409);
   });

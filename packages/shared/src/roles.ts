@@ -13,6 +13,8 @@ export const PERMISSION_CATALOG = [
   { key: 'job.dispatch', label: 'Release cars', group: 'Selling', needs: ['job.create'] },
   { key: 'job.dispatch_with_balance', label: 'Release a car that still owes money', group: 'Selling', needs: ['job.dispatch'] },
   { key: 'job.void', label: 'Void jobs', group: 'Selling', needs: ['job.create'] },
+  { key: 'job.edit', label: 'Correct a job before it is paid (people, quantity, services)', group: 'Selling', needs: ['job.create'] },
+  { key: 'job.override_busy', label: 'Put someone on a second service while they are busy', group: 'Selling', needs: ['job.advance'] },
   { key: 'payment.record', label: 'Take payments', group: 'Selling', needs: ['job.create'] },
   { key: 'payment.void', label: 'Void payments', group: 'Selling', needs: ['payment.record'] },
   { key: 'customer.manage', label: 'Add and change customers', group: 'Selling' },
@@ -83,7 +85,7 @@ export function withNeeded(picked: readonly string[]): Permission[] {
 /** What a role is given when it is first made. The owner role is not here: it always has everything. */
 export const DEFAULT_ROLES = {
   Manager: withNeeded([
-    'job.create', 'job.advance', 'job.void', 'job.dispatch', 'job.dispatch_with_balance', 'payment.record', 'payment.void',
+    'job.create', 'job.advance', 'job.void', 'job.edit', 'job.override_busy', 'job.dispatch', 'job.dispatch_with_balance', 'payment.record', 'payment.void',
     'customer.manage', 'user.reset_password',
     'expense.create', 'expense.void', 'commission.view', 'commission.payout', 'tip.record', 'tip.handout', 'tip.void',
     'dailyclose.close', 'dailyclose.reopen', 'dailyclose.see_expected', 'dashboard.view', 'audit.read',

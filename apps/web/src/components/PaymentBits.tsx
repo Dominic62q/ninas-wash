@@ -82,8 +82,8 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
       <Field label="Amount (GH₵)" hint="Less than the balance? Take the rest in another payment.">
         <input className="input" inputMode="decimal" value={amountText} onChange={(e) => { setAmountText(e.target.value); setError(null); }} autoComplete="off" aria-label="Amount" />
       </Field>
-      {method?.requiresReference ? (
-        <Field label={`${method.name} reference`}>
+      {method?.requiresReference || (method && !method.inDrawer) ? (
+        <Field label={`${method.name} reference${method.requiresReference ? '' : ' (optional)'}`}>
           <input className="input" value={reference} onChange={(e) => { setReference(e.target.value); setError(null); }} maxLength={40} autoComplete="off" placeholder="From the confirmation message" />
         </Field>
       ) : method?.inDrawer ? (

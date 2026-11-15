@@ -25,6 +25,7 @@ import {
 import type { DbOrTx } from '../db/client.js';
 import { attendants, auditLogs, customers, jobLineAttendants, jobLines, jobs, paymentMethods, payments, services, users, vehicles } from '../db/schema.js';
 import { writeAudit } from '../lib/audit.js';
+import { acceptBusy, busyProblem } from '../lib/busy.js';
 import { earnCommissions, reverseCommissions } from '../lib/commissions.js';
 import { assertDayOpen, dayOf } from '../lib/dayLock.js';
 import { HttpError, conflict, notFound } from '../lib/errors.js';
@@ -226,6 +227,17 @@ async function linesWithoutAttendants(tx: DbOrTx, jobId: number): Promise<number
   return result.rows[0]?.n ?? 0;
 }
 
+/** Everyone on a job's services, one entry per person per service. */
+async function crewOf(tx: DbOrTx, jobId: number): Promise<number[]> {
+  const rows = await tx
+    .select({ id: jobLineAttendants.attendantId })
+    .from(jobLineAttendants)
+    .innerJoin(jobLines, eq(jobLines.id, jobLineAttendants.jobLineId))
+    .where(eq(jobLines.jobId, jobId))
+    .orderBy(asc(jobLineAttendants.id));
+  return rows.map((r) => r.id);
+}
+
 const needsAttendant = () =>
   new HttpError(409, 'needs_attendant', 'Put at least one attendant on every service before starting.');
 
@@ -420,6 +432,10 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         if (input.start && input.lines.some((l) => l.attendantIds.length === 0 && serviceById.get(l.serviceId)!.kind === 'service')) {
           throw needsAttendant();
         }
+        // One person does one service at a time: starting now means nobody here may already be busy.
+        const overrode = input.start
+          ? acceptBusy(await busyProblem(tx, { jobId: null, crew: input.lines.flatMap((l) => l.attendantIds) }), input.busyNote, req.user!.permissions)
+          : false;
 
         // The car: found by plate, or added now. A car can only be on the board once at a time.
         // A walk-in customer has no plate, so there is no car and no owner to save.
@@ -499,6 +515,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         if (input.start) {
           await writeAudit(tx, { ...actor, action: 'job.status', recordTable: 'jobs', recordId: job!.id, before: { status: 'pending' }, after: { status: 'in_progress' } });
         }
+        if (overrode) await writeAudit(tx, { ...actor, action: 'job.override_busy', recordTable: 'jobs', recordId: job!.id, note: input.busyNote! });
         return job!.id;
       });
       // The text goes out after the job is safely saved, and the cashier never waits for it.
@@ -600,7 +617,12 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       if (dup) throw conflict('duplicate_line', 'That service is already on this job.');
 
       const service = serviceById.get(input.serviceId)!;
+      const overrode =
+        job.status === 'in_progress'
+          ? acceptBusy(await busyProblem(tx, { jobId: id, crew: input.attendantIds, onJob: await crewOf(tx, id) }), input.busyNote, req.user!.permissions)
+          : false;
       await insertLine(tx, id, service, input.quantity, input.attendantIds, req.user!.id);
+      if (overrode) await writeAudit(tx, { userId: req.user!.id, action: 'job.override_busy', recordTable: 'jobs', recordId: id, note: input.busyNote!, ip: req.ip });
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'job.add_line',
@@ -616,7 +638,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
   // "Assign": put people on a service that has nobody yet. Once set, a line's team is fixed (the records are never edited).
   app.put('/:id/lines/:lineId/attendants', work, async (req) => {
     const { id, lineId } = z.object({ id: z.coerce.number().int().positive(), lineId: z.coerce.number().int().positive() }).parse(req.params);
-    const { attendantIds } = assignInput.parse(req.body);
+    const { attendantIds, busyNote } = assignInput.parse(req.body);
 
     await app.db.transaction(async (tx) => {
       const job = await lockJob(tx, id);
@@ -633,7 +655,12 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         throw conflict('already_assigned', 'Attendants are already set. To change them, void the job and enter it again.');
       }
       const people = await activeAttendants(tx, attendantIds);
+      const overrode =
+        job.status === 'in_progress'
+          ? acceptBusy(await busyProblem(tx, { jobId: id, crew: attendantIds, onJob: await crewOf(tx, id) }), busyNote, req.user!.permissions)
+          : false;
       await insertShares(tx, lineId, attendantIds);
+      if (overrode) await writeAudit(tx, { userId: req.user!.id, action: 'job.override_busy', recordTable: 'jobs', recordId: id, note: busyNote!, ip: req.ip });
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'job.assign',
@@ -678,7 +705,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
   // pending -> in progress -> completed, one step at a time and never backwards.
   app.post('/:id/status', { preHandler: app.requirePermission('job.advance') }, async (req) => {
     const { id } = idParams.parse(req.params);
-    const { to } = statusInput.parse(req.body);
+    const { to, busyNote } = statusInput.parse(req.body);
     const from = to === 'in_progress' ? 'pending' : 'in_progress';
 
     await app.db.transaction(async (tx) => {
@@ -688,12 +715,15 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         throw conflict('wrong_status', job.status === to ? 'This job has already moved on.' : `This job is ${job.status.replace('_', ' ')}, so it cannot go to ${to.replace('_', ' ')}.`);
       }
       if ((await linesWithoutAttendants(tx, id)) > 0) throw needsAttendant();
+      // Starting the wash: nobody on it may already be busy on another job, or on two services of this one.
+      const overrode = to === 'in_progress' ? acceptBusy(await busyProblem(tx, { jobId: id, crew: await crewOf(tx, id) }), busyNote, req.user!.permissions) : false;
       const now = new Date();
       await tx
         .update(jobs)
         .set(to === 'in_progress' ? { status: to, startedAt: now } : { status: to, completedAt: now })
         .where(eq(jobs.id, id));
       if (to === 'completed') await earnCommissions(tx, id);
+      if (overrode) await writeAudit(tx, { userId: req.user!.id, action: 'job.override_busy', recordTable: 'jobs', recordId: id, note: busyNote!, ip: req.ip });
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'job.status',

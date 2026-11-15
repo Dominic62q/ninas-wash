@@ -35,8 +35,16 @@ let rug: number; // GH₵30.00 each, fixed GH₵4.00 each
 let kofi: number;
 
 type Job = { id: number; subtotal: number; total: number; lines: { id: number; quantity: number; price: number }[] };
-const book = (lines: Record<string, unknown>[], extra: Record<string, unknown> = {}) =>
-  call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines, start: true, ...extra });
+/** A new person for every service: one person does one service at a time, and these jobs stay open. */
+let crew = 0;
+const who = async () => (await call(owner, 'POST', '/api/attendants', { name: `P12 Hand ${++crew}`, phone: null })).json().attendant.id as number;
+const book = async (lines: Record<string, unknown>[], extra: Record<string, unknown> = {}) =>
+  call(cashier, 'POST', '/api/jobs', {
+    plate: newPlate(),
+    lines: await Promise.all(lines.map(async (l) => ({ ...l, attendantIds: [await who()] }))),
+    start: true,
+    ...extra,
+  });
 
 beforeAll(async () => {
   app = await buildApp({ db, config });
@@ -86,7 +94,7 @@ describe('quantity on a service', () => {
   it('can be set when adding a service to a job already on the board', async () => {
     const made = await book([{ serviceId: seat, attendantIds: [kofi] }]);
     const id = (made.json().job as Job).id;
-    const added = await call(cashier, 'POST', `/api/jobs/${id}/lines`, { serviceId: rug, quantity: 3, attendantIds: [kofi] });
+    const added = await call(cashier, 'POST', `/api/jobs/${id}/lines`, { serviceId: rug, quantity: 3, attendantIds: [await who()] });
     expect(added.statusCode).toBe(201);
     const job = added.json().job as Job;
     expect(job.lines[1]).toMatchObject({ quantity: 3, price: 9000 });
@@ -94,13 +102,19 @@ describe('quantity on a service', () => {
   });
 
   it('pays a percent commission on the whole line and a fixed one for each', async () => {
-    const before = (await call(owner, 'GET', `/api/commissions/attendants/${kofi}`)).json().ledger.owed as number;
-    const made = await book([{ serviceId: seat, quantity: 5, attendantIds: [kofi] }, { serviceId: rug, quantity: 2, attendantIds: [kofi] }]);
+    const seatHand = await who();
+    const rugHand = await who();
+    const made = await call(cashier, 'POST', '/api/jobs', {
+      plate: newPlate(),
+      lines: [{ serviceId: seat, quantity: 5, attendantIds: [seatHand] }, { serviceId: rug, quantity: 2, attendantIds: [rugHand] }],
+      start: true,
+    });
     const id = (made.json().job as Job).id;
     expect((await call(cashier, 'POST', `/api/jobs/${id}/status`, { to: 'completed' })).statusCode).toBe(200);
-    const after = (await call(owner, 'GET', `/api/commissions/attendants/${kofi}`)).json().ledger.owed as number;
-    // 10% of GH₵100.00 = GH₵10.00, plus 2 x GH₵4.00
-    expect(after - before).toBe(1000 + 800);
+    const owed = async (a: number) => (await call(owner, 'GET', `/api/commissions/attendants/${a}`)).json().ledger.owed as number;
+    // 10% of GH₵100.00 = GH₵10.00, and 2 x GH₵4.00
+    expect(await owed(seatHand)).toBe(1000);
+    expect(await owed(rugHand)).toBe(800);
   });
 
   it('counts how many were sold, not how many lines', async () => {

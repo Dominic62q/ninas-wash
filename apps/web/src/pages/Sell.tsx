@@ -259,8 +259,8 @@ export function Sell() {
         {lines.length > 0 && (
           <>
             <MethodPicker label="Paid by" value={method?.id ?? null} onChange={(m) => { setPicked(m); setError(null); }} />
-            {method?.requiresReference ? (
-              <Field label={`${method.name} reference`}>
+            {method?.requiresReference || (method && !method.inDrawer) ? (
+              <Field label={`${method.name} reference${method.requiresReference ? '' : ' (optional)'}`}>
                 <input className="input" value={reference} onChange={(e) => { setReference(e.target.value); setError(null); }} maxLength={40} autoComplete="off" placeholder="From the confirmation message" />
               </Field>
             ) : method?.inDrawer ? (

@@ -15,12 +15,8 @@ export const jobLineInput = z.object({
   serviceId: id,
   /** How many of it: three seats cleaned, two rugs. */
   quantity: z.number().int('Use a whole number').min(1, 'At least 1').max(MAX_LINE_QUANTITY, `Up to ${MAX_LINE_QUANTITY}`).default(1),
-  /** Who washes it. Can be empty at first ("Assign" later), but a job cannot start until every line has someone. */
-  attendantIds: z
-    .array(id)
-    .max(6)
-    .default([])
-    .refine((ids) => new Set(ids).size === ids.length, 'Pick each attendant once'),
+  /** Who washes it: one person per service. Can be empty at first ("Assign" later), but a job cannot start until every service has someone. */
+  attendantIds: z.array(id).max(1, 'One attendant per service').default([]),
 });
 export type JobLineInput = z.infer<typeof jobLineInput>;
 
@@ -50,6 +46,9 @@ export const createJobInput = z
   notes: z.string().trim().max(300).nullish().transform((v) => v || null),
   /** "Save and start wash" (true) or "Save as pending" (false). */
   start: z.boolean().default(false),
+  /** A manager putting someone on a second service while they are busy says why here. */
+  busyNote: z.string().trim().max(200).nullish().transform((v) => v || null),
+
 })
   .superRefine((v, ctx) => {
     if (v.walkIn) return;
@@ -58,7 +57,10 @@ export const createJobInput = z
   });
 export type CreateJobInput = z.infer<typeof createJobInput>;
 
-export const addLineInput = jobLineInput;
+export const addLineInput = jobLineInput.extend({
+  /** A manager adding someone who is busy on another service says why here. */
+  busyNote: z.string().trim().max(200).nullish().transform((v) => v || null),
+});
 
 /** One item on a walk-in sale. */
 export const saleLineInput = z.object({
@@ -91,13 +93,17 @@ export const saleInput = z.object({
 export type SaleInput = z.infer<typeof saleInput>;
 
 export const assignInput = z.object({
-  attendantIds: z.array(id).min(1, 'Pick at least one attendant').max(6).refine((ids) => new Set(ids).size === ids.length, 'Pick each attendant once'),
+  attendantIds: z.array(id).min(1, 'Pick an attendant').max(1, 'One attendant per service'),
+  busyNote: z.string().trim().max(200).nullish().transform((v) => v || null),
 });
 
 export const discountInput = z.object({ discount: discountField });
 
 /** Jobs only move forward. Handing the car over is its own step (dispatch), below. */
-export const statusInput = z.object({ to: z.enum(['in_progress', 'completed']) });
+export const statusInput = z.object({
+  to: z.enum(['in_progress', 'completed']),
+  busyNote: z.string().trim().max(200).nullish().transform((v) => v || null),
+});
 
 /** One payment. Several can be taken on a job (part cash, part MoMo). Whether a reference is needed depends on the method. */
 export const paymentInput = z.object({

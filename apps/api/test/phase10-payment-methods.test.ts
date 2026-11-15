@@ -71,7 +71,7 @@ describe('payment methods', () => {
     const list = res.json().methods as Method[];
     expect(list.slice(0, 2)).toMatchObject([
       { id: 1, name: 'Cash', inDrawer: true, requiresReference: false },
-      { id: 2, name: 'MoMo', inDrawer: false, requiresReference: true },
+      { id: 2, name: 'MoMo', inDrawer: false, requiresReference: false },
     ]);
   });
 

@@ -207,7 +207,8 @@ describe('items on a wash', () => {
 
 describe('a wash for a walk-in customer', () => {
   it('books a wash with no number plate, starts it and puts it on the board', async () => {
-    const res = await call(cashier, 'POST', '/api/jobs', { walkIn: true, lines: [{ serviceId: wash, attendantIds: [kofi] }], start: true });
+    const hand = (await call(owner, 'POST', '/api/attendants', { name: 'P16 Hand', phone: null })).json().attendant.id as number;
+    const res = await call(cashier, 'POST', '/api/jobs', { walkIn: true, lines: [{ serviceId: wash, attendantIds: [hand] }], start: true });
     expect(res.statusCode).toBe(201);
     expect(res.json().job).toMatchObject({ kind: 'wash', vehicle: null, customer: null, status: 'in_progress', total: 5000 });
     const board = (await call(cashier, 'GET', '/api/jobs/board')).json().jobs as { id: number; plate: string | null }[];

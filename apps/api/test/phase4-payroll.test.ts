@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { createDb } from '../src/db/client.js';
-import { users } from '../src/db/schema.js';
+import { jobLineAttendants, jobLines, users } from '../src/db/schema.js';
 import { hashPassword } from '../src/lib/password.js';
 import { splitByShares } from '../src/lib/commissions.js';
 import { roleIdFor } from './roles.js';
@@ -107,10 +107,17 @@ describe('earning commission', () => {
     expect(await owedTo(kofi)).toBe(750);
   });
 
-  it('is shared between the people on a service, to the pesewa', async () => {
+  it('is shared between the people on an older service that had two, to the pesewa', async () => {
     const a = await makeAttendant('P4 Ama');
     const b = await makeAttendant('P4 Esi');
-    await finishedJob([{ serviceId: oddWash, attendantIds: [a, b] }]);
+    // New jobs have one person per service, but jobs written before that rule can still carry a split.
+    const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: oddWash, attendantIds: [a] }] });
+    const jobId = made.json().job.id as number;
+    const [line] = await db.select().from(jobLines).where(eq(jobLines.jobId, jobId));
+    await db.update(jobLineAttendants).set({ shareBp: 5000 }).where(eq(jobLineAttendants.jobLineId, line!.id));
+    await db.insert(jobLineAttendants).values({ jobLineId: line!.id, attendantId: b, shareBp: 5000 });
+    expect((await call(cashier, 'POST', `/api/jobs/${jobId}/status`, { to: 'in_progress' })).statusCode).toBe(200);
+    expect((await call(cashier, 'POST', `/api/jobs/${jobId}/status`, { to: 'completed' })).statusCode).toBe(200);
     expect((await owedTo(a)) + (await owedTo(b))).toBe(333);
     expect(await owedTo(a)).toBe(167);
     const entry = (await ledger(a)).entries[0]!;
@@ -125,7 +132,8 @@ describe('earning commission', () => {
 
   it('adds up across jobs and services', async () => {
     const nana = await makeAttendant('P4 Nana');
-    await finishedJob([{ serviceId: wash, attendantIds: [nana] }, { serviceId: detail, attendantIds: [nana] }]);
+    await finishedJob([{ serviceId: wash, attendantIds: [nana] }]);
+    await finishedJob([{ serviceId: detail, attendantIds: [nana] }]);
     await finishedJob([{ serviceId: wash, attendantIds: [nana] }]);
     const l = await ledger(nana);
     expect(l).toMatchObject({ owed: 750 + 500 + 750, earned: 2000, paidOut: 0 });

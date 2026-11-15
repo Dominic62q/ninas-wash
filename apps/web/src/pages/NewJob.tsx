@@ -17,7 +17,7 @@ import {
 import { Avatar } from '../components/Avatar';
 import { MultiSelect, Select } from '../components/Dropdown';
 import { Plate } from '../components/Plate';
-import { AttendantPicker, QuantityStepper, sharedNote, useAttendants, useServices } from '../components/JobBits';
+import { AttendantPicker, BusyNote, QuantityStepper, useAttendants, useServices } from '../components/JobBits';
 import { useToast } from '../components/Toast';
 import { Check, Field, FormError, Panel, errorMessage } from '../components/ui';
 import { api } from '../lib/api';
@@ -39,7 +39,7 @@ interface Lookup {
   customer: CustomerRow | null;
 }
 
-/** Phone: tap faces to put people on a service. */
+/** Phone: tap a face to put that person on a service. One person per service; tap again to take them off. */
 function WasherRow({ people, value, label, onToggle }: { people: { id: number; name: string }[]; value: number[]; label: string; onToggle: (id: number) => void }) {
   return (
     <ul aria-label={`Who is washing ${label}`} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -85,6 +85,7 @@ export function NewJob() {
   /** serviceId -> how many. Missing means one. */
   const [quantities, setQuantities] = useState<Map<number, number>>(new Map());
   const [startNow, setStartNow] = useState(false);
+  const [busyNote, setBusyNote] = useState('');
   const [plateSheet, setPlateSheet] = useState(false);
   const sheetInput = useRef<HTMLInputElement>(null);
   // The plate was tapped to be typed, so the keyboard may come up. The sheet's own effect has opened the dialog by now.
@@ -125,9 +126,8 @@ export function NewJob() {
   const total = Math.max(subtotal - (discountValue ?? 0), 0);
   /** Items come off the shelf: they take no attendants and cannot go past what is in stock. */
   const itemIds = new Set(serviceList.filter((s) => s.kind === 'item').map((s) => s.id));
-  /** People on every chosen service, and everyone on at least one. Items are left out. */
+  /** The person on each chosen service, and how many different people that is. Items are left out. */
   const lines = [...picked].filter(([id]) => !itemIds.has(id)).map(([, ids]) => ids);
-  const onAll = lines.length === 0 ? [] : lines.reduce((a, b) => a.filter((id) => b.includes(id)));
   const onAny = new Set(lines.flat()).size;
 
   const save = useMutation({
@@ -156,18 +156,11 @@ export function NewJob() {
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
 
-  /** Phone: a dropdown. A new service starts with the people already on every other service. The other kind is left as it is. */
+  /** Phone: a dropdown. A new service starts with nobody on it. The other kind is left as it is. */
   function setServices(ids: number[], kind: ServiceKind) {
     const other = (id: number) => (itemIds.has(id) ? 'item' : 'service') !== kind;
-    setPicked((m) => new Map([...[...m].filter(([id]) => other(id)), ...ids.map((id) => [id, itemIds.has(id) ? [] : (m.get(id) ?? onAll)] as const)]));
+    setPicked((m) => new Map([...[...m].filter(([id]) => other(id)), ...ids.map((id) => [id, itemIds.has(id) ? [] : (m.get(id) ?? [])] as const)]));
     setQuantities((m) => new Map([...m].filter(([id]) => other(id) || ids.includes(id))));
-    setErrors((e) => (Object.keys(e).length ? {} : e));
-  }
-
-  /** Phone: the shortcut row. Adds the person to every service, or takes them off every one. */
-  function toggleCrew(id: number) {
-    const remove = onAll.includes(id);
-    setPicked((m) => new Map([...m].map(([k, ids]) => [k, itemIds.has(k) ? ids : remove ? ids.filter((x) => x !== id) : ids.includes(id) ? ids : [...ids, id]] as const)));
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
 
@@ -187,6 +180,7 @@ export function NewJob() {
       discount: discountValue ?? 0,
       notes,
       start,
+      busyNote,
       ...(wantsOwner ? { customer: { name: owner.name, phone: owner.phone, okToText: owner.okToText } } : {}),
     });
     if (!parsed.success) {
@@ -255,7 +249,7 @@ export function NewJob() {
                   <>
                     <div className="max-lg:hidden">
                       <AttendantPicker
-                        label={`Attendants for ${s.name}`}
+                        label={`Attendant for ${s.name}`}
                         options={people}
                         value={ids}
                         onChange={(next) => {
@@ -270,14 +264,13 @@ export function NewJob() {
                         value={ids}
                         label={s.name}
                         onToggle={(id) => {
-                          setPicked((m) => new Map(m).set(s.id, ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+                          setPicked((m) => new Map(m).set(s.id, ids.includes(id) ? [] : [id]));
                           setErrors({});
                         }}
                       />
                     </div>
                   </>
                 )}
-                {sharedNote(ids.length) && <p className="text-xs text-ink-3">{sharedNote(ids.length)}</p>}
               </div>
             );
           })}
@@ -493,14 +486,8 @@ export function NewJob() {
       {catalog('service')}
       {catalog('item')}
 
-      {/* Phone: a shortcut for putting the same people on every service, and the start-now tick. */}
-      <section aria-label="Same people on every service" className="flex flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-card lg:hidden">
-        {lines.length > 1 && people.length > 0 && (
-          <>
-            <h2 className="display text-lg text-navy">Same people on every service</h2>
-            <WasherRow people={people} value={onAll} label="every service" onToggle={toggleCrew} />
-          </>
-        )}
+      {/* Phone: the start-now tick. */}
+      <section aria-label="Start washing" className="flex flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-card lg:hidden">
         <Check label="Start washing now" checked={startNow} onChange={setStartNow} hint="Leave off to book the car as pending" />
       </section>
 
@@ -543,6 +530,7 @@ export function NewJob() {
       </section>
 
       <FormError message={save.isError ? errorMessage(save.error) : (errors.form ?? null)} />
+      <BusyNote error={save.error} note={busyNote} onNote={setBusyNote} />
       <div className="grid grid-cols-2 gap-3 max-lg:hidden">
         <button type="button" className="btn btn-primary h-auto min-h-11 px-3 py-2 text-center leading-tight lg:min-h-12" disabled={save.isPending} onClick={() => submit(true)}>
           {save.isPending ? 'Saving…' : 'Start wash'}
