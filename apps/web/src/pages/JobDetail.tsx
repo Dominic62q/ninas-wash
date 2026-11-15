@@ -18,7 +18,7 @@ import {
   type ServiceKind,
 } from '@niinas/shared';
 import { Plate } from '../components/Plate';
-import { AttendantPicker, BusyNote, QuantityStepper, StatusPill, useAttendants, useServices } from '../components/JobBits';
+import { AttendantPicker, BusyNote, QuantityStepper, StagePill, useAttendants, useServices } from '../components/JobBits';
 import { SlideToConfirm } from '../components/SlideToConfirm';
 import { TipPanel } from '../components/TipPanel';
 import { useJobSteps, type JobStep } from '../components/JobActions';
@@ -78,12 +78,18 @@ function describe(h: JobHistoryEntry): string {
   }
 }
 
+/** The job's one attendant, if a service on it already has someone. New services start with them. */
+const jobAttendant = (job: JobDetailDto): number[] => {
+  const id = job.lines.flatMap((l) => l.attendants.map((a) => a.id))[0];
+  return id === undefined ? [] : [id];
+};
+
 function AssignPanel({ job, lineId, onClose }: { job: JobDetailDto; lineId: number | null; onClose: () => void }) {
   const queryClient = useQueryClient();
   const attendants = useAttendants();
   const toast = useToast();
   const line = job.lines.find((l) => l.id === lineId);
-  const [ids, setIds] = useState<number[]>([]);
+  const [ids, setIds] = useState<number[]>(() => jobAttendant(job));
   const [busyNote, setBusyNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -108,7 +114,7 @@ function AssignPanel({ job, lineId, onClose }: { job: JobDetailDto; lineId: numb
       {line && (
         <>
           <p className="text-ink-2">
-            Who is washing <strong className="text-ink">{line.name}</strong>? One person does one service at a time.
+            Who is washing <strong className="text-ink">{line.name}</strong>? One person does the whole job.
           </p>
           <AttendantPicker label="Attendant" options={attendants.data?.attendants ?? []} value={ids} onChange={(next) => { setIds(next); setError(null); }} />
           <FormError message={error ?? (save.isError ? errorMessage(save.error) : null)} />
@@ -128,7 +134,7 @@ function AddServicePanel({ job, kind, open, onClose }: { job: JobDetailDto; kind
   const attendants = useAttendants();
   const toast = useToast();
   const [serviceId, setServiceId] = useState<number | null>(null);
-  const [ids, setIds] = useState<number[]>([]);
+  const [ids, setIds] = useState<number[]>(() => jobAttendant(job));
   const [busyNote, setBusyNote] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -390,36 +396,6 @@ function VoidPanel({ job, open, onClose }: { job: JobDetailDto; open: boolean; o
   );
 }
 
-const TRACK = ['Waiting', 'Washing', 'Ready', 'Gone'] as const;
-const TRACK_AT: Record<JobDetailDto['status'], number> = { pending: 0, in_progress: 1, completed: 2, dispatched: 3 };
-
-/** Phone: where the car is, in four steps. */
-function Tracker({ status }: { status: JobDetailDto['status'] }) {
-  const at = TRACK_AT[status] ?? 0;
-  return (
-    <ol aria-label="Progress" className="flex items-start rounded-[14px] bg-surface px-3 py-3.5 shadow-card lg:hidden">
-      {TRACK.map((name, i) => {
-        const done = i < at;
-        const now = i === at;
-        return (
-          <li key={name} aria-current={now ? 'step' : undefined} className="relative flex flex-1 flex-col items-center gap-1.5 text-[12px] font-medium">
-            {i > 0 && <span aria-hidden="true" className={`absolute right-1/2 top-[11px] h-0.5 w-full ${i <= at ? 'bg-blue' : 'bg-line'}`} />}
-            <span
-              aria-hidden="true"
-              className={`relative grid h-6 w-6 place-items-center rounded-full text-[11px] text-white ${
-                done ? 'bg-blue' : now ? 'bg-blue ring-4 ring-blue/20' : 'bg-line'
-              }`}
-            >
-              {done ? '✓' : ''}
-            </span>
-            <span className={now ? 'text-navy' : done ? 'text-ink-2' : 'text-ink-3'}>{name}</span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
 type Dialog =
   | { kind: 'assign'; lineId: number }
   | { kind: 'edit'; lineId: number }
@@ -508,12 +484,12 @@ export function JobDetail() {
 
   /** The one step the phone's bottom bar slides: start, finish or dispatch. */
   const slide: { step: JobStep; label: string; disabled?: boolean } | null =
-    open && job.status === 'pending'
+    open && job.status === 'pending' && job.balance > 0
       ? { step: 'start', label: 'Slide to start washing', disabled: missing }
-      : open && job.status === 'in_progress'
-        ? { step: 'complete', label: 'Slide when finished' }
-        : finished && can('job.dispatch') && job.balance === 0
-          ? { step: 'dispatch', label: 'Slide to dispatch' }
+      : !job.voided && job.status !== 'dispatched' && can('job.dispatch') && job.balance === 0
+        ? { step: 'dispatch', label: 'Slide to dispatch' }
+        : open && job.status === 'in_progress' && !canPay
+          ? { step: 'complete', label: 'Slide when finished' }
           : null;
 
   /** A manager can still correct a job until money is taken on it or the car leaves. */
@@ -559,7 +535,7 @@ export function JobDetail() {
         <h2 aria-label={job.vehicle ? `Number plate ${job.vehicle.plate}` : isSale ? 'Walk-in sale' : 'Walk-in customer'}>
           <Plate plate={job.vehicle?.plate ?? null} size="lg" walkIn={isSale ? 'Walk-in sale' : 'Walk-in'} />
         </h2>
-        {job.voided ? <Pill tone="grey">Voided</Pill> : isSale ? <Pill tone="green">Sold</Pill> : <StatusPill status={job.status} />}
+        <StagePill job={job} />
         <p className="num ml-auto text-xs text-ink-3 sm:text-sm">{job.number}</p>
       </header>
 
@@ -569,13 +545,17 @@ export function JobDetail() {
         </p>
       )}
 
-      {!job.voided && !isSale && <Tracker status={job.status} />}
-
       {open && (
         <div className="grid grid-cols-2 gap-3 sm:flex">
           {job.status === 'pending' && (
             <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" disabled={missing} onClick={() => steps.ask('start', job.id, label)}>
               Start wash
+            </button>
+          )}
+          {/* Jump to the end: a booked car can be paid for, finished and handed over from here without the steps in between. */}
+          {job.status === 'pending' && canPay && can('job.advance') && (
+            <button type="button" className="btn col-span-2 max-lg:hidden sm:flex-1" disabled={missing} onClick={() => setDialog({ kind: 'pay' })}>
+              Pay · {formatGHS(job.balance)}
             </button>
           )}
           {/* Quick way: take the money and finish in one go. The step by step way (Mark complete, pay, dispatch) stays beside it. */}
@@ -584,8 +564,15 @@ export function JobDetail() {
               Pay · {formatGHS(job.balance)}
             </button>
           )}
-          {job.status === 'in_progress' && (
-            <button type="button" className={`btn col-span-2 max-lg:hidden sm:flex-1 ${canPay ? '' : 'btn-primary'}`} onClick={() => steps.ask('complete', job.id, label)}>
+          {/* Paid in full: the car can go. Dispatching finishes the wash on the way out, so there is no separate "complete" to press. */}
+          {job.status === 'in_progress' && job.balance === 0 && can('job.dispatch') && (
+            <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" onClick={() => steps.ask('dispatch', job.id, label)}>
+              Dispatch car
+            </button>
+          )}
+          {/* Only for someone who cannot take payments: they still need a way to say the wash is done. */}
+          {job.status === 'in_progress' && !canPay && !(job.balance === 0 && can('job.dispatch')) && (
+            <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" onClick={() => steps.ask('complete', job.id, label)}>
               Mark complete
             </button>
           )}
@@ -621,6 +608,11 @@ export function JobDetail() {
           {finished && can('job.dispatch') && job.balance > 0 && mayRelease && (
             <button type="button" className="btn flex-1" onClick={() => setDialog({ kind: 'dispatch' })}>
               Dispatch with balance
+            </button>
+          )}
+          {finished && canCorrect && !isSale && (
+            <button type="button" className="btn" onClick={() => setDialog({ kind: 'add', of: 'service' })}>
+              Add a service
             </button>
           )}
           <button type="button" className="btn" disabled={shareReceipt.isPending} onClick={() => shareReceipt.mutate()}>
@@ -793,9 +785,6 @@ export function JobDetail() {
         <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-auto flex gap-3 rounded-t-[18px] bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(7,31,71,0.14)] lg:hidden">
           <button type="button" className="btn btn-primary h-[54px] flex-1 rounded-xl text-base" onClick={() => setDialog({ kind: 'pay' })}>
             Pay · {formatGHS(job.balance)}
-          </button>
-          <button type="button" className="btn h-[54px] rounded-xl px-4" onClick={() => steps.ask('complete', job.id, label)}>
-            Finished
           </button>
         </div>
       ) : slide ? (

@@ -141,8 +141,8 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
     },
   });
 
-  /** The wash is running or done, so this payment can also finish the job: no separate steps. */
-  const running = job.status === 'in_progress' && can('job.advance');
+  /** The wash is booked, running or done, so this payment can also finish the job: no separate steps. A booked car is started with it. */
+  const running = (job.status === 'in_progress' || job.status === 'pending') && can('job.advance');
   const finished = job.status === 'completed';
   const covers = amount !== null && amount >= job.balance;
   const canDispatch = (running || finished) && can('job.dispatch') && covers;
@@ -204,7 +204,7 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
       )}
       {running ? (
         <button type="button" className="tap text-center text-sm text-blue-d" disabled={save.isPending} onClick={() => submit(null)}>
-          Save the payment only, the wash carries on
+          Save the payment only
         </button>
       ) : (
         <button type="button" className={`btn ${canDispatch ? '' : 'btn-primary'}`} disabled={save.isPending} onClick={() => submit(null)}>

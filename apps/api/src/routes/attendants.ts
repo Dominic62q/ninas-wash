@@ -18,14 +18,22 @@ const jobsThisWeek = sql<number>`(
   where jla.attendant_id = "attendants"."id" and jl.removed_at is null and j.voided_at is null and j.created_at > now() - interval '7 days'
 )`;
 
+const busyNow = sql<boolean>`exists (
+  select 1 from ${jobLineAttendants} jla
+  join ${jobLines} jl on jl.id = jla.job_line_id
+  join ${jobs} j on j.id = jl.job_id
+  where jla.attendant_id = "attendants"."id" and jl.removed_at is null and j.voided_at is null and j.status = 'in_progress'
+)`;
+
 type Row = typeof attendants.$inferSelect;
-const toDto = (row: Row, jobsCount = 0): AttendantDto => ({
+const toDto = (row: Row, jobsCount = 0, busy = false): AttendantDto => ({
   id: row.id,
   name: row.name,
   phone: row.phone,
   active: row.active,
   leftOn: row.deactivatedAt ? row.deactivatedAt.toISOString() : null,
   jobsThisWeek: jobsCount,
+  busy,
 });
 
 const editable = (row: Row) => ({ name: row.name, phone: row.phone, active: row.active });
@@ -37,11 +45,11 @@ export const attendantRoutes: FastifyPluginAsync = async (app) => {
     const { includeInactive } = list.parse(req.query);
     const showAll = includeInactive === '1' && can(req.user!.permissions, 'attendant.manage');
     const rows = await app.db
-      .select({ attendant: attendants, jobs: jobsThisWeek })
+      .select({ attendant: attendants, jobs: jobsThisWeek, busy: busyNow })
       .from(attendants)
       .where(showAll ? undefined : eq(attendants.active, true))
       .orderBy(desc(attendants.active), asc(attendants.name));
-    return { attendants: rows.map((r) => toDto(r.attendant, r.jobs)) };
+    return { attendants: rows.map((r) => toDto(r.attendant, r.jobs, r.busy)) };
   });
 
   app.post('/', { preHandler: app.requirePermission('attendant.manage') }, async (req, reply) => {

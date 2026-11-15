@@ -172,10 +172,28 @@ describe('voiding a payment', () => {
 });
 
 describe('dispatching the car', () => {
-  it('needs the wash to be finished', async () => {
-    const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [kofi] }], start: true });
+  it('does not let an unpaid car go just because it is still being washed, and changes nothing when it refuses', async () => {
+    const who = (await call(owner, 'POST', '/api/attendants', { name: `P3 Gate ${Date.now()}`, phone: null })).json().attendant.id as number;
+    const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [who] }], start: true });
     const res = await call(cashier, 'POST', `/api/jobs/${made.json().job.id}/dispatch`, {});
-    expect(res.statusCode).toBe(409);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('balance_owed');
+    expect(await jobOf(made.json().job.id)).toMatchObject({ status: 'in_progress' });
+  });
+
+  it('finishes a paid car that was still marked as washing on its way out, and earns the commission then', async () => {
+    const who = (await call(owner, 'POST', '/api/attendants', { name: `P3 Out ${Date.now()}`, phone: null })).json().attendant.id as number;
+    const made = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [who] }], start: true });
+    const id = made.json().job.id as number;
+    await pay(cashier, id, { methodId: 1, amount: 5000 });
+    expect(await jobOf(id)).toMatchObject({ status: 'in_progress', paid: 5000 });
+    const res = await call(cashier, 'POST', `/api/jobs/${id}/dispatch`, {});
+    expect(res.statusCode).toBe(200);
+    expect(res.json().job).toMatchObject({ status: 'dispatched', balance: 0 });
+    const owedNow = (await call(manager, 'GET', `/api/commissions/attendants/${who}`)).json().ledger.owed as number;
+    expect(owedNow).toBe(750);
+    const actions = res.json().job.history.map((h: { action: string }) => h.action);
+    expect(actions).toEqual(['job.create', 'job.status', 'payment.record', 'job.status', 'job.dispatch']);
   });
 
   it('lets a paid car go, once', async () => {
@@ -281,12 +299,35 @@ describe('paying and finishing in one step', () => {
     expect(part.json().job).toMatchObject({ status: 'completed', paid: 2000, balance: 3000 });
   });
 
-  it('needs the wash to have started, and saves once when the same request arrives twice', async () => {
-    const waiting = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [ama] }] });
-    const early = await pay(cashier, waiting.json().job.id, { methodId: 1, amount: 5000, finish: 'wait' });
-    expect(early.statusCode).toBe(409);
-    expect((await jobOf(waiting.json().job.id)).paid).toBe(0);
+  it('jumps a booked car straight to the end: started, finished and handed over with the payment', async () => {
+    const who = (await call(owner, 'POST', '/api/attendants', { name: `P3 Quick ${++hands}`, phone: null })).json().attendant.id as number;
+    const booked = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [who] }] });
+    expect(booked.json().job.status).toBe('pending');
+    const res = await pay(cashier, booked.json().job.id, { methodId: 1, amount: 5000, finish: 'dispatch' });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().job).toMatchObject({ status: 'dispatched', paid: 5000, balance: 0 });
+    expect(res.json().job.startedAt).not.toBeNull();
+    expect(await owedTo(who)).toBe(750);
+    const actions = res.json().job.history.map((h: { action: string }) => h.action);
+    expect(actions).toEqual(['job.create', 'payment.record', 'job.status', 'job.dispatch']);
+  });
 
+  it('will not start a booked car with the payment when nobody is on it or the person is busy, and saves nothing', async () => {
+    const nobody = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [] }] });
+    const noOne = await pay(cashier, nobody.json().job.id, { methodId: 1, amount: 5000, finish: 'wait' });
+    expect(noOne.statusCode).toBe(409);
+    expect(noOne.json().error.code).toBe('needs_attendant');
+    expect((await jobOf(nobody.json().job.id)).paid).toBe(0);
+
+    const busy = await runningJob();
+    const second = await call(cashier, 'POST', '/api/jobs', { plate: newPlate(), lines: [{ serviceId: wash, attendantIds: [busy.who] }] });
+    const clash = await pay(cashier, second.json().job.id, { methodId: 1, amount: 5000, finish: 'wait' });
+    expect(clash.statusCode).toBe(409);
+    expect(clash.json().error.code).toBe('attendant_busy');
+    expect(await jobOf(second.json().job.id)).toMatchObject({ status: 'pending', paid: 0 });
+  });
+
+  it('saves once when the same request arrives twice', async () => {
     const { id } = await runningJob();
     const key = newKey();
     const first = await call(cashier, 'POST', `/api/jobs/${id}/payments`, { methodId: 1, amount: 5000, finish: 'dispatch', idemKey: key });

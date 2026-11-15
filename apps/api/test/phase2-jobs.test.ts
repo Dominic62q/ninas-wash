@@ -297,15 +297,14 @@ describe('one person, one service at a time', () => {
     expect((await call(cashier, 'POST', `/api/jobs/${waiting.id}/status`, { to: 'in_progress' })).statusCode).toBe(200);
   });
 
-  it('will not put the same person on two services of one job', async () => {
+  it('lets one person do every service of the same job', async () => {
     const who = await makeAttendant('P2 Busy Three');
     const res = await call(cashier, 'POST', '/api/jobs', {
       plate: newPlate(),
       lines: [{ serviceId: fullWash, attendantIds: [who] }, { serviceId: polish, attendantIds: [who] }],
       start: true,
     });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toMatch(/already on another service of this job/);
+    expect(res.statusCode).toBe(201);
   });
 
   it('lets a manager go ahead with a reason, and writes it in the log; a cashier cannot', async () => {
@@ -338,8 +337,7 @@ describe('one person, one service at a time', () => {
     expect(add.statusCode).toBe(409);
     expect(add.json().error.code).toBe('attendant_busy');
     const same = await call(cashier, 'POST', `/api/jobs/${running.id}/lines`, { serviceId: polish, attendantIds: [other] });
-    expect(same.statusCode).toBe(409);
-    expect(same.json().error.message).toMatch(/already on another service of this job/);
+    expect(same.statusCode).toBe(201);
   });
 });
 

@@ -49,6 +49,8 @@ export interface AttendantDto {
   /** The day they were set inactive, if they were. */
   leftOn: string | null;
   jobsThisWeek: number;
+  /** On a service of a wash that is running right now, so not the one to hand the next car to. */
+  busy: boolean;
 }
 
 export interface UserDto {

@@ -23,6 +23,7 @@ import {
   type JobDetail,
   type JobListRow,
   type PaymentDto,
+  type Permission,
 } from '@niinas/shared';
 import type { DbOrTx } from '../db/client.js';
 import { attendants, auditLogs, customers, jobLineAttendants, jobLines, jobs, paymentMethods, payments, services, users, vehicles } from '../db/schema.js';
@@ -238,6 +239,28 @@ async function crewOf(tx: DbOrTx, jobId: number): Promise<number[]> {
     .where(and(eq(jobLines.jobId, jobId), isNull(jobLines.removedAt)))
     .orderBy(asc(jobLineAttendants.id));
   return rows.map((r) => r.id);
+}
+
+/**
+ * Everything that must hold before a booked or running wash is finished for the cashier in one step (by a payment or by
+ * dispatching). Checked first, so a refusal leaves nothing half done.
+ */
+async function assertCanFinish(tx: DbOrTx, job: typeof jobs.$inferSelect, permissions: readonly Permission[], what: string) {
+  if (job.status !== 'pending' && job.status !== 'in_progress') return;
+  if (!can(permissions, 'job.advance')) throw new HttpError(403, 'forbidden', `You cannot start or finish a wash. ${what}`);
+  if (job.status === 'pending') {
+    if ((await linesWithoutAttendants(tx, job.id)) > 0) throw needsAttendant();
+    acceptBusy(await busyProblem(tx, { jobId: job.id, crew: await crewOf(tx, job.id) }), null, permissions);
+  }
+}
+
+/** Starts (if booked) and finishes a wash in one go. The commission is earned now, exactly as if Mark complete had been pressed. */
+async function finishNow(tx: DbOrTx, job: typeof jobs.$inferSelect, userId: number, ip: string, now: Date, via: 'payment' | 'dispatch') {
+  if (job.status !== 'pending' && job.status !== 'in_progress') return false;
+  await tx.update(jobs).set({ status: 'completed', completedAt: now, ...(job.status === 'pending' ? { startedAt: now } : {}) }).where(eq(jobs.id, job.id));
+  await earnCommissions(tx, job.id);
+  await writeAudit(tx, { userId, action: 'job.status', recordTable: 'jobs', recordId: job.id, before: { status: job.status }, after: { status: 'completed', with: via }, ip });
+  return true;
 }
 
 const needsAttendant = () =>
@@ -636,7 +659,10 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       // Services go on while the car is being worked on. A shelf item can still go on at the till, once the wash is
       // done and until the car leaves, as long as the bill is not settled yet.
       const atTheTill = job.status === 'completed' && serviceById.get(input.serviceId)!.kind === 'item' && (await subtotalOf(tx, id)) - job.discount > (await paidOf(tx, id));
-      if (job.status !== 'pending' && job.status !== 'in_progress' && !atTheTill) {
+      // A manager can also put a forgotten service on a finished wash nobody has paid on yet. It earns its commission straight away.
+      const lateService = job.status === 'completed' && serviceById.get(input.serviceId)!.kind === 'service' && can(req.user!.permissions, 'job.edit');
+      if (lateService) await assertCorrectable(tx, job);
+      if (job.status !== 'pending' && job.status !== 'in_progress' && !atTheTill && !lateService) {
         throw conflict('job_closed', 'This job is closed.');
       }
       const people = await activeAttendants(tx, input.attendantIds);
@@ -650,15 +676,20 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const service = serviceById.get(input.serviceId)!;
       const overrode =
         job.status === 'in_progress'
-          ? acceptBusy(await busyProblem(tx, { jobId: id, crew: input.attendantIds, onJob: await crewOf(tx, id) }), input.busyNote, req.user!.permissions)
+          ? acceptBusy(await busyProblem(tx, { jobId: id, crew: input.attendantIds }), input.busyNote, req.user!.permissions)
           : false;
-      await insertLine(tx, id, service, input.quantity, input.attendantIds, req.user!.id);
+      const added = await insertLine(tx, id, service, input.quantity, input.attendantIds, req.user!.id);
+      if (lateService) {
+        await earnCommissions(tx, id, undefined, added.id);
+        for (const person of input.attendantIds) await relinkPayouts(tx, person);
+      }
       if (overrode) await writeAudit(tx, { userId: req.user!.id, action: 'job.override_busy', recordTable: 'jobs', recordId: id, note: input.busyNote!, ip: req.ip });
       await writeAudit(tx, {
         userId: req.user!.id,
         action: 'job.add_line',
         recordTable: 'jobs',
         recordId: id,
+        note: lateService ? 'Added after the wash was finished' : undefined,
         after: { service: service.name, quantity: input.quantity, price: service.price * input.quantity, attendants: input.attendantIds.map((a) => people.get(a)!.name) },
         ip: req.ip,
       });
@@ -688,7 +719,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const people = await activeAttendants(tx, attendantIds);
       const overrode =
         job.status === 'in_progress'
-          ? acceptBusy(await busyProblem(tx, { jobId: id, crew: attendantIds, onJob: await crewOf(tx, id) }), busyNote, req.user!.permissions)
+          ? acceptBusy(await busyProblem(tx, { jobId: id, crew: attendantIds }), busyNote, req.user!.permissions)
           : false;
       await insertShares(tx, lineId, attendantIds);
       if (overrode) await writeAudit(tx, { userId: req.user!.id, action: 'job.override_busy', recordTable: 'jobs', recordId: id, note: busyNote!, ip: req.ip });
@@ -748,12 +779,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         if (current[0]?.attendantId !== newPerson) {
           await activeAttendants(tx, [newPerson]);
           if (job.status === 'in_progress') {
-            const others = await tx
-              .select({ id: jobLineAttendants.attendantId })
-              .from(jobLineAttendants)
-              .innerJoin(jobLines, eq(jobLines.id, jobLineAttendants.jobLineId))
-              .where(and(eq(jobLines.jobId, id), isNull(jobLines.removedAt), ne(jobLines.id, lineId)));
-            overrode = acceptBusy(await busyProblem(tx, { jobId: id, crew: [newPerson], onJob: others.map((o) => o.id) }), input.busyNote, req.user!.permissions);
+            overrode = acceptBusy(await busyProblem(tx, { jobId: id, crew: [newPerson] }), input.busyNote, req.user!.permissions);
           }
           changedPerson = true;
           personNow = newPerson;
@@ -929,11 +955,9 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       // Pay and finish in one go. All of it is checked before the payment is saved, so nothing is half done.
       const finish = input.finish;
       if (finish) {
-        if (job.status === 'pending') throw conflict('wrong_status', 'Start the wash first. Then the payment can finish it.');
         if (job.status === 'dispatched') throw conflict('wrong_status', 'This car has already been dispatched.');
-        if (job.status === 'in_progress' && !can(req.user!.permissions, 'job.advance')) {
-          throw new HttpError(403, 'forbidden', 'You cannot mark a wash as finished. Take the payment alone.');
-        }
+        // A booked car can jump straight to the end: it is started and finished with the payment, so the same rules as starting apply.
+        await assertCanFinish(tx, job, req.user!.permissions, 'Take the payment alone.');
         if (finish === 'dispatch') {
           if (!can(req.user!.permissions, 'job.dispatch')) throw new HttpError(403, 'forbidden', 'You cannot dispatch a car. Choose pay and wait for dispatch.');
           if (input.amount !== owed) throw new HttpError(400, 'not_fully_paid', 'To dispatch, the whole balance has to be paid now. Take all of it, or choose pay and wait for dispatch.');
@@ -956,21 +980,8 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       let finishedNow = false;
       if (finish) {
         const now = new Date();
-        if (job.status === 'in_progress') {
-          // The wash is done when it is paid: commission is earned now, exactly as if "Mark complete" had been pressed.
-          await tx.update(jobs).set({ status: 'completed', completedAt: now }).where(eq(jobs.id, id));
-          await earnCommissions(tx, id);
-          await writeAudit(tx, {
-            userId: req.user!.id,
-            action: 'job.status',
-            recordTable: 'jobs',
-            recordId: id,
-            before: { status: 'in_progress' },
-            after: { status: 'completed', with: 'payment' },
-            ip: req.ip,
-          });
-          finishedNow = true;
-        }
+        // The wash is done when it is paid.
+        finishedNow = await finishNow(tx, job, req.user!.id, req.ip, now, 'payment');
         if (finish === 'dispatch') {
           await tx.update(jobs).set({ status: 'dispatched', dispatchedAt: now }).where(eq(jobs.id, id));
           await writeAudit(tx, {
@@ -1025,10 +1036,12 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
     const { note } = dispatchInput.parse(req.body ?? {});
 
     await app.db.transaction(async (tx) => {
-      const job = await lockJob(tx, id);
-      if (job.status !== 'completed') {
-        throw conflict('wrong_status', job.status === 'dispatched' ? 'This car has already been dispatched.' : 'Finish the wash before dispatching.');
-      }
+      let job = await lockJob(tx, id);
+      if (job.status === 'dispatched') throw conflict('wrong_status', 'This car has already been dispatched.');
+      // The cashier no longer steps a car through "started" and "finished": dispatching a paid car finishes it on the way out.
+      await assertCanFinish(tx, job, req.user!.permissions, 'Ask someone who can finish it first.');
+      const finishedHere = await finishNow(tx, job, req.user!.id, req.ip, new Date(), 'dispatch');
+      if (finishedHere) job = await lockJob(tx, id);
       const owed = Math.max((await subtotalOf(tx, id)) - job.discount, 0) - (await paidOf(tx, id));
       const withBalance = owed > 0;
       if (withBalance) {

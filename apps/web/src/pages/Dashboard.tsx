@@ -9,11 +9,11 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { dayName, plural } from '../lib/format';
 
+// Booked and being washed are one thing to the people at the till: a car that is still here and not finished.
 const STAGES = [
-  { key: 'waiting', label: 'Waiting', colour: '#d99a00' },
-  { key: 'washing', label: 'Washing', colour: '#0068d8' },
-  { key: 'ready', label: 'Ready', colour: '#0b7a43' },
-  { key: 'dispatched', label: 'Gone', colour: '#9aa7bd' },
+  { key: 'open', label: 'On the bay', keys: ['waiting', 'washing'], colour: '#d99a00' },
+  { key: 'ready', label: 'Ready', keys: ['ready'], colour: '#0b7a43' },
+  { key: 'dispatched', label: 'Gone', keys: ['dispatched'], colour: '#9aa7bd' },
 ] as const;
 
 function greeting(now = new Date()) {
@@ -173,11 +173,11 @@ export function Dashboard() {
                   <span className="display num text-[28px] leading-none text-navy lg:text-[34px]">{d.cars.total}</span>
                   <span className="text-sm text-ink-3">{d.cars.total === 1 ? 'car' : 'cars'}</span>
                 </div>
-                <SegmentBar parts={STAGES.map((s) => ({ label: s.label, value: d.cars[s.key], colour: s.colour }))} delay={750} />
-                <ul className="grid grid-cols-4 gap-2 text-center">
+                <SegmentBar parts={STAGES.map((s) => ({ label: s.label, value: s.keys.reduce((n, k) => n + d.cars[k], 0), colour: s.colour }))} delay={750} />
+                <ul className="grid grid-cols-3 gap-2 text-center">
                   {STAGES.map((s) => (
                     <li key={s.key}>
-                      <p className="num text-lg font-bold leading-none text-ink">{d.cars[s.key]}</p>
+                      <p className="num text-lg font-bold leading-none text-ink">{s.keys.reduce((n, k) => n + d.cars[k], 0)}</p>
                       <p className="mt-1 flex items-center justify-center gap-1 text-xs text-ink-3">
                         <span aria-hidden className="inline-block h-2 w-2" style={{ background: s.colour }} />
                         {s.label}

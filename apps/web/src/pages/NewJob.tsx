@@ -39,7 +39,7 @@ interface Lookup {
   customer: CustomerRow | null;
 }
 
-/** Phone: tap a face to put that person on a service. One person per service; tap again to take them off. */
+/** Phone: tap a face to put that person on the job. One person does the whole job; tap again to take them off. */
 function WasherRow({ people, value, label, onToggle }: { people: { id: number; name: string }[]; value: number[]; label: string; onToggle: (id: number) => void }) {
   return (
     <ul aria-label={`Who is washing ${label}`} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -80,11 +80,15 @@ export function NewJob() {
   const [carType, setCarType] = useState('');
   const [saveOwner, setSaveOwner] = useState(false);
   const [owner, setOwner] = useState({ name: '', phone: '', okToText: false });
-  /** serviceId -> the people on it. A service is on the job when it has a key. */
-  const [picked, setPicked] = useState<Map<number, number[]>>(new Map());
+  /** The services and items on the job. */
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  /** The one attendant for the whole job. Undefined means "whoever is free"; null means nobody yet (booking for later). */
+  const [attendant, setAttendant] = useState<number | null | undefined>(undefined);
   /** serviceId -> how many. Missing means one. */
   const [quantities, setQuantities] = useState<Map<number, number>>(new Map());
   const [startNow, setStartNow] = useState(true);
+  /** After saving, open the payment screen, so the car can be paid for and finished in one go. */
+  const [payNext, setPayNext] = useState(false);
   const [busyNote, setBusyNote] = useState('');
   const [plateSheet, setPlateSheet] = useState(false);
   const sheetInput = useRef<HTMLInputElement>(null);
@@ -126,25 +130,29 @@ export function NewJob() {
   const total = Math.max(subtotal - (discountValue ?? 0), 0);
   /** Items come off the shelf: they take no attendants and cannot go past what is in stock. */
   const itemIds = new Set(serviceList.filter((s) => s.kind === 'item').map((s) => s.id));
-  /** The person on each chosen service, and how many different people that is. Items are left out. */
-  const lines = [...picked].filter(([id]) => !itemIds.has(id)).map(([, ids]) => ids);
-  const onAny = new Set(lines.flat()).size;
+  /** True when the job has a service on it (items alone need nobody). */
+  const hasService = [...picked].some((id) => !itemIds.has(id));
+  /** The job's attendant: the one chosen, or by default the first person who is free. */
+  const firstFree = people.find((p) => !p.busy)?.id ?? null;
+  const chosen = attendant !== undefined && (attendant === null || people.some((p) => p.id === attendant)) ? attendant : firstFree;
+  const attendantIds = chosen === null ? [] : [chosen];
 
   const save = useMutation({
     mutationFn: (body: unknown) => api('/jobs', { method: 'POST', body }),
-    onSuccess: async (_data, body) => {
+    onSuccess: async (data, body) => {
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success((body as { start: boolean }).start ? 'Job saved and wash started' : 'Job saved as pending');
-      navigate('/jobs');
+      toast.success((body as { start: boolean }).start ? 'Job saved and wash started' : 'Job booked for later');
+      const jobId = (data as { job?: { id?: number } } | undefined)?.job?.id;
+      navigate(payNext && jobId ? `/jobs/${jobId}?pay=1` : '/jobs');
     },
   });
 
   function toggleService(id: number) {
     setPicked((m) => {
-      const next = new Map(m);
+      const next = new Set(m);
       if (next.has(id)) next.delete(id);
-      else next.set(id, []);
+      else next.add(id);
       return next;
     });
     setQuantities((m) => {
@@ -156,10 +164,14 @@ export function NewJob() {
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
 
-  /** Phone: a dropdown. A new service starts with nobody on it. The other kind is left as it is. */
+  /** Phone: a dropdown. The other kind is left as it is. */
   function setServices(ids: number[], kind: ServiceKind) {
     const other = (id: number) => (itemIds.has(id) ? 'item' : 'service') !== kind;
-    setPicked((m) => new Map([...[...m].filter(([id]) => other(id)), ...ids.map((id) => [id, itemIds.has(id) ? [] : (m.get(id) ?? [])] as const)]));
+    setPicked((m) => {
+      const next = new Set([...m].filter((id) => other(id)));
+      for (const id of ids) next.add(id);
+      return next;
+    });
     setQuantities((m) => new Map([...m].filter(([id]) => other(id) || ids.includes(id))));
     setErrors((e) => (Object.keys(e).length ? {} : e));
   }
@@ -167,8 +179,8 @@ export function NewJob() {
   function submit(start: boolean) {
     const found: Record<string, string> = {};
     if (discountValue === null) found.discount = 'Enter the discount, like 5 or 5.50';
-    if (start && lines.some((ids) => ids.length === 0)) {
-      found.lines = 'Pick attendants for each service, or save as pending';
+    if (start && hasService && attendantIds.length === 0) {
+      found.lines = 'Pick who is washing, or book it for later';
     }
     const wantsOwner = (isNewCar || needsOwner) && saveOwner;
     const parsed = createJobInput.safeParse({
@@ -176,7 +188,8 @@ export function NewJob() {
       walkIn,
       makeModel: isNewCar ? makeModel : null,
       carType: isNewCar ? carType || null : null,
-      lines: [...picked].map(([serviceId, attendantIds]) => ({ serviceId, quantity: qty(serviceId), attendantIds })),
+      // One attendant does every service on the job. Items come off the shelf and take nobody.
+      lines: [...picked].map((serviceId) => ({ serviceId, quantity: qty(serviceId), attendantIds: itemIds.has(serviceId) ? [] : attendantIds })),
       discount: discountValue ?? 0,
       notes,
       start,
@@ -223,7 +236,6 @@ export function NewJob() {
         {list
           .filter((s) => picked.has(s.id))
           .map((s) => {
-            const ids = picked.get(s.id) ?? [];
             return (
               <div key={s.id} className="rise flex flex-col gap-2.5 border-[1.5px] border-blue bg-blue-50 p-3 max-lg:rounded-[10px] max-lg:border-0">
                 <div className="flex items-center justify-between gap-3">
@@ -241,39 +253,43 @@ export function NewJob() {
                     </span>
                   )}
                 </div>
-                {s.kind === 'item' ? (
-                  <p className="text-xs text-ink-3">{s.stock} on the shelf. Items need no attendant.</p>
-                ) : people.length === 0 ? (
-                  <p className="text-sm text-ink-3">No attendants yet. Add them under Staff and users.</p>
-                ) : (
-                  <>
-                    <div className="max-lg:hidden">
-                      <AttendantPicker
-                        label={`Attendant for ${s.name}`}
-                        options={people}
-                        value={ids}
-                        onChange={(next) => {
-                          setPicked((m) => new Map(m).set(s.id, next));
-                          setErrors({});
-                        }}
-                      />
-                    </div>
-                    <div className="lg:hidden">
-                      <WasherRow
-                        people={people}
-                        value={ids}
-                        label={s.name}
-                        onToggle={(id) => {
-                          setPicked((m) => new Map(m).set(s.id, ids.includes(id) ? [] : [id]));
-                          setErrors({});
-                        }}
-                      />
-                    </div>
-                  </>
-                )}
+                {s.kind === 'item' && <p className="text-xs text-ink-3">{s.stock} on the shelf. Items need no attendant.</p>}
               </div>
             );
           })}
+        {/* One attendant for the whole job, however many services are on it. */}
+        {!isItem && hasService && (
+          people.length === 0 ? (
+            <p className="text-sm text-ink-3">No attendants yet. Add them under Staff and users.</p>
+          ) : (
+            <div className="flex flex-col gap-2 border-t border-line pt-3">
+              <p className="text-sm font-medium text-ink">Who is washing</p>
+              <div className="max-lg:hidden">
+                <AttendantPicker
+                  label="Attendant for this job"
+                  options={people}
+                  value={attendantIds}
+                  onChange={(next) => {
+                    setAttendant(next[0] ?? null);
+                    setErrors({});
+                  }}
+                />
+              </div>
+              <div className="lg:hidden">
+                <WasherRow
+                  people={people}
+                  value={attendantIds}
+                  label="this job"
+                  onToggle={(id) => {
+                    setAttendant(attendantIds.includes(id) ? null : id);
+                    setErrors({});
+                  }}
+                />
+              </div>
+              <p className="text-xs text-ink-3">One person does every service on this job.</p>
+            </div>
+          )
+        )}
         {!isItem && errors.lines && <p role="alert" className="text-[13px] font-medium text-red-d">{errors.lines}</p>}
 
         <div className="grid grid-cols-2 gap-2 max-lg:hidden sm:grid-cols-3">
@@ -488,7 +504,11 @@ export function NewJob() {
 
       {/* Phone: the start-now tick. */}
       <section aria-label="Start washing" className="flex flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-card lg:hidden">
-        <Check label="Start washing now" checked={startNow} onChange={setStartNow} hint="The usual way. Leave off to book the car as pending" />
+        <Check label="Start washing now" checked={startNow} onChange={setStartNow} hint="The usual way. Leave off to book the car for later" />
+      </section>
+
+      <section aria-label="After saving" className="flex flex-col gap-3 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card lg:p-5">
+        <Check label="Go to payment after saving" checked={payNext} onChange={setPayNext} hint="Take the money and finish or hand over the car in one go, skipping the steps in between" />
       </section>
 
       <section aria-label="Price" className="flex flex-col gap-3 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card lg:gap-4 lg:p-5">
@@ -536,7 +556,7 @@ export function NewJob() {
           {save.isPending ? 'Saving…' : 'Start wash'}
         </button>
         <button type="button" className="btn h-auto min-h-11 px-3 py-2 text-center leading-tight lg:min-h-12" disabled={save.isPending} onClick={() => submit(false)}>
-          Save as pending
+          Book for later
         </button>
       </div>
 
@@ -546,11 +566,11 @@ export function NewJob() {
           <p className="text-xs font-medium text-ink-3">Total</p>
           <p className="display num whitespace-nowrap text-2xl text-navy">{formatGHS(total)}</p>
           <p className="text-xs text-ink-3">
-            {plural(picked.size, 'service')}, {plural(onAny, 'washer')}
+            {plural(picked.size, 'service')}, {plural(attendantIds.length, 'washer')}
           </p>
         </div>
         <button type="button" className="btn btn-primary h-[50px] flex-1 text-[15.5px]" disabled={save.isPending} onClick={() => submit(startNow)}>
-          {save.isPending ? 'Saving…' : startNow ? 'Book and start wash' : 'Book the car'}
+          {save.isPending ? 'Saving…' : startNow ? 'Book and start wash' : 'Book for later'}
         </button>
       </div>
     </form>
