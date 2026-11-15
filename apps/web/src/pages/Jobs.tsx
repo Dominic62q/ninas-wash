@@ -66,6 +66,7 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
   const long = minutes !== null && minutes >= RUNNING_LONG_MIN;
   const car = [job.makeModel, job.carType && CAR_LABEL[job.carType]].filter(Boolean).join(' · ');
   const { can } = useAuth();
+  const owes = job.total > job.paid && can('payment.record');
   return (
     <li
       className="rise border border-line bg-surface transition-colors hover:border-line-strong max-lg:flex max-lg:items-center max-lg:gap-2 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card"
@@ -115,10 +116,22 @@ function Card({ job, onAsk, now, index }: { job: JobCard; onAsk: (step: JobStep,
             </button>
           ))}
         {job.status === 'in_progress' && (
-          <button type="button" className={`btn btn-primary whitespace-nowrap ${ACT} ${QUIET}`} onClick={() => onAsk('complete', job.id, job.plate ?? 'Walk-in')}>
-            <span className="lg:hidden">Done</span>
-            <span className="max-lg:hidden">Mark complete</span>
-          </button>
+          <>
+            {/* The quick way is a payment that finishes the job. A phone card has room for one button, so it gets Pay when there is money to take. */}
+            <button
+              type="button"
+              className={`btn whitespace-nowrap ${ACT} ${QUIET} ${owes ? 'max-lg:hidden' : 'btn-primary'}`}
+              onClick={() => onAsk('complete', job.id, job.plate ?? 'Walk-in')}
+            >
+              <span className="lg:hidden">Done</span>
+              <span className="max-lg:hidden">Mark complete</span>
+            </button>
+            {owes && (
+              <Link to={`${detail}?pay=1`} className={`btn btn-primary whitespace-nowrap no-underline ${ACT} ${QUIET}`}>
+                Pay
+              </Link>
+            )}
+          </>
         )}
         {job.status === 'completed' &&
           (job.total > job.paid ? (

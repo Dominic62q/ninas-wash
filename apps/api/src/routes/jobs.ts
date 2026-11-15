@@ -604,10 +604,13 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
 
     await app.db.transaction(async (tx) => {
       const job = await lockJob(tx, id);
-      if (job.status !== 'pending' && job.status !== 'in_progress') {
+      const serviceById = await activeServices(tx, [input.serviceId]);
+      // Services go on while the car is being worked on. A shelf item can still go on at the till, once the wash is
+      // done and until the car leaves, as long as the bill is not settled yet.
+      const atTheTill = job.status === 'completed' && serviceById.get(input.serviceId)!.kind === 'item' && (await subtotalOf(tx, id)) - job.discount > (await paidOf(tx, id));
+      if (job.status !== 'pending' && job.status !== 'in_progress' && !atTheTill) {
         throw conflict('job_closed', 'This job is closed.');
       }
-      const serviceById = await activeServices(tx, [input.serviceId]);
       const people = await activeAttendants(tx, input.attendantIds);
       const [dup] = await tx
         .select({ id: jobLines.id })
@@ -743,12 +746,12 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
     const { id } = idParams.parse(req.params);
     const input = paymentInput.parse(req.body);
 
-    const created = await app.db.transaction(async (tx) => {
+    const { created, finishedNow } = await app.db.transaction(async (tx) => {
       const job = await lockJob(tx, id);
       const [again] = await tx.select().from(payments).where(eq(payments.idemKey, input.idemKey));
       if (again) {
         if (again.jobId !== id) throw conflict('key_reused', 'That payment was already saved on another job.');
-        return false;
+        return { created: false, finishedNow: false };
       }
       await assertDayOpen(tx, dayOf());
       const method = await activeMethod(tx, input.methodId);
@@ -757,6 +760,21 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const owed = Math.max((await subtotalOf(tx, id)) - job.discount, 0) - (await paidOf(tx, id));
       if (owed <= 0) throw conflict('nothing_owed', 'Nothing is owed on this job.');
       if (input.amount > owed) throw new HttpError(400, 'too_much', `Only ${formatGHS(owed)} is still owed.`);
+
+      // Pay and finish in one go. All of it is checked before the payment is saved, so nothing is half done.
+      const finish = input.finish;
+      if (finish) {
+        if (job.status === 'pending') throw conflict('wrong_status', 'Start the wash first. Then the payment can finish it.');
+        if (job.status === 'dispatched') throw conflict('wrong_status', 'This car has already been dispatched.');
+        if (job.status === 'in_progress' && !can(req.user!.permissions, 'job.advance')) {
+          throw new HttpError(403, 'forbidden', 'You cannot mark a wash as finished. Take the payment alone.');
+        }
+        if (finish === 'dispatch') {
+          if (!can(req.user!.permissions, 'job.dispatch')) throw new HttpError(403, 'forbidden', 'You cannot dispatch a car. Choose pay and wait for dispatch.');
+          if (input.amount !== owed) throw new HttpError(400, 'not_fully_paid', 'To dispatch, the whole balance has to be paid now. Take all of it, or choose pay and wait for dispatch.');
+        }
+      }
+
       const [row] = await tx
         .insert(payments)
         .values({ jobId: id, methodId: method.id, amount: input.amount, reference: input.reference, idemKey: input.idemKey, recordedBy: req.user!.id })
@@ -769,10 +787,44 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
         after: { method: method.name, amount: input.amount, reference: input.reference },
         ip: req.ip,
       });
-      return true;
+
+      let finishedNow = false;
+      if (finish) {
+        const now = new Date();
+        if (job.status === 'in_progress') {
+          // The wash is done when it is paid: commission is earned now, exactly as if "Mark complete" had been pressed.
+          await tx.update(jobs).set({ status: 'completed', completedAt: now }).where(eq(jobs.id, id));
+          await earnCommissions(tx, id);
+          await writeAudit(tx, {
+            userId: req.user!.id,
+            action: 'job.status',
+            recordTable: 'jobs',
+            recordId: id,
+            before: { status: 'in_progress' },
+            after: { status: 'completed', with: 'payment' },
+            ip: req.ip,
+          });
+          finishedNow = true;
+        }
+        if (finish === 'dispatch') {
+          await tx.update(jobs).set({ status: 'dispatched', dispatchedAt: now }).where(eq(jobs.id, id));
+          await writeAudit(tx, {
+            userId: req.user!.id,
+            action: 'job.dispatch',
+            recordTable: 'jobs',
+            recordId: id,
+            before: { status: 'completed' },
+            after: { status: 'dispatched', owed: 0, with: 'payment' },
+            ip: req.ip,
+          });
+        }
+      }
+      return { created: true, finishedNow };
     });
     // A repeated tap on the same payment saved nothing new, so it texts nothing new.
     if (created) void app.sms.notifyJob('payment_received', id, { paymentAmount: input.amount });
+    // "Your car is ready" is for a car that waits. A car handed over in the same breath does not need it.
+    if (finishedNow && input.finish === 'wait') void app.sms.notifyJob('job_ready', id);
     return reply.status(created ? 201 : 200).send({ job: await loadJob(app.db, id) });
   });
 

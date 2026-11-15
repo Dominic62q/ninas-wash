@@ -1,12 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { dispatchInput, formatAmount, formatGHS, parseGHS, referenceProblem, voidInput, type JobDetail, type PayMethodDto, type PaymentDto } from '@niinas/shared';
 import { useToast } from './Toast';
 import { Select } from './Dropdown';
 import { Choice, Field, FormError, Panel, Pill, errorMessage } from './ui';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { newKey } from '../lib/format';
 import { useActiveMethods } from '../lib/useMethods';
+import { QuantityStepper, useServices } from './JobBits';
 
 /** Pick how something was paid. Up to three ways sit side by side, more than that become a list. */
 export function MethodPicker({ label, value, onChange }: { label: string; value: number | null; onChange: (m: PayMethodDto) => void }) {
@@ -35,6 +37,73 @@ export function PayPill({ total, paid }: { total: number; paid: number }) {
 
 const plain = (pesewas: number) => formatAmount(pesewas).replace(/,/g, '');
 
+/**
+ * Items from the shelf, put on the bill at the till. They go on the job straight away, so the balance above is right
+ * before any money is taken. Left out once the bill is settled or the car has gone.
+ */
+function ShelfItems({ job }: { job: JobDetail }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const { can } = useAuth();
+  const services = useServices();
+  const [open, setOpen] = useState(false);
+  const [pick, setPick] = useState<number | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const onJob = new Set(job.lines.map((l) => l.serviceId));
+  const shelf = (services.data?.services ?? []).filter((s) => s.kind === 'item' && s.stock > 0 && !onJob.has(s.id));
+  const chosen = shelf.find((s) => s.id === pick);
+
+  const add = useMutation({
+    mutationFn: (body: unknown) => api(`/jobs/${job.id}/lines`, { method: 'POST', body }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      await queryClient.invalidateQueries({ queryKey: ['services'] });
+      toast.success('Item added to the bill');
+      setPick(null);
+      setQuantity(1);
+    },
+  });
+
+  const mayAdd = can('job.create') && (job.status === 'pending' || job.status === 'in_progress' || job.status === 'completed');
+  if (!mayAdd || shelf.length === 0) return null;
+  if (!open) {
+    return (
+      <button type="button" className="tap self-start text-sm text-blue-d" onClick={() => setOpen(true)}>
+        Add items from the shelf
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2 border border-line bg-band p-3 max-lg:rounded-[10px]">
+      <p className="text-sm font-medium text-ink-2">Add to the bill</p>
+      <div className="flex flex-wrap gap-2">
+        {shelf.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            aria-pressed={pick === s.id}
+            onClick={() => { setPick(s.id); setQuantity(1); }}
+            className={`flex min-h-10 cursor-pointer items-center gap-2 border-[1.5px] px-3 text-left text-sm max-lg:rounded-[10px] ${pick === s.id ? 'border-blue bg-blue-50' : 'border-line-strong bg-surface'}`}
+          >
+            <span className="font-medium text-ink">{s.name}</span>
+            <span className="num text-ink-2">{formatGHS(s.price)}</span>
+          </button>
+        ))}
+      </div>
+      {chosen && (
+        <div className="flex flex-wrap items-center gap-3">
+          <QuantityStepper label={chosen.name} value={quantity} onChange={setQuantity} max={chosen.stock} />
+          <span className="num text-sm text-ink-3">{formatGHS(chosen.price * quantity)}</span>
+          <button type="button" className="btn btn-primary ml-auto h-10 px-4" disabled={add.isPending} onClick={() => add.mutate({ serviceId: chosen.id, quantity, attendantIds: [] })}>
+            {add.isPending ? 'Adding…' : 'Add'}
+          </button>
+        </div>
+      )}
+      {add.isError && <FormError message={errorMessage(add.error)} />}
+    </div>
+  );
+}
+
 /** Take one payment. Part cash and part MoMo is two payments. */
 export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -43,11 +112,17 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
   const [picked, setPicked] = useState<PayMethodDto | null>(null);
   const method = picked ?? first;
   const [amountText, setAmountText] = useState(plain(job.balance));
+  /** Once the cashier types an amount it is theirs. Until then it follows the balance, which moves when items are added. */
+  const [typed, setTyped] = useState(false);
+  useEffect(() => {
+    if (!typed) setAmountText(plain(job.balance));
+  }, [job.balance, typed]);
   const [reference, setReference] = useState('');
   const [received, setReceived] = useState('');
   const [error, setError] = useState<string | null>(null);
   // One key per form: a double-tap or a retry after a bad connection saves the payment once.
   const [idemKey] = useState(newKey);
+  const { can } = useAuth();
 
   const amount = parseGHS(amountText);
   const handed = received.trim() === '' ? null : parseGHS(received);
@@ -55,22 +130,31 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
 
   const save = useMutation({
     mutationFn: (body: unknown) => api(`/jobs/${job.id}/payments`, { method: 'POST', body }),
-    onSuccess: async () => {
+    onSuccess: async (_data, body) => {
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       await queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success(amount !== null && amount >= job.balance ? 'Paid in full' : `${formatGHS(amount ?? 0)} received`);
+      const finish = (body as { finish?: string | null }).finish;
+      toast.success(
+        finish === 'dispatch' ? 'Paid and dispatched' : finish === 'wait' ? 'Paid, waiting for dispatch' : amount !== null && amount >= job.balance ? 'Paid in full' : `${formatGHS(amount ?? 0)} received`,
+      );
       onClose();
     },
   });
 
-  function submit() {
+  /** The wash is running or done, so this payment can also finish the job: no separate steps. */
+  const running = job.status === 'in_progress' && can('job.advance');
+  const finished = job.status === 'completed';
+  const covers = amount !== null && amount >= job.balance;
+  const canDispatch = (running || finished) && can('job.dispatch') && covers;
+
+  function submit(finish: 'wait' | 'dispatch' | null) {
     if (amount === null || amount <= 0) return setError('Enter the amount, like 20 or 20.50');
     if (amount > job.balance) return setError(`Only ${formatGHS(job.balance)} is still owed`);
     if (!method) return setError('Pick how the customer paid');
     const problem = referenceProblem(method, reference);
     if (problem) return setError(problem);
     setError(null);
-    save.mutate({ methodId: method.id, amount, reference: reference.trim() || null, idemKey });
+    save.mutate({ methodId: method.id, amount, reference: reference.trim() || null, idemKey, finish });
   }
 
   return (
@@ -78,9 +162,10 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
       <p className="text-ink-2">
         <strong className="text-ink">{formatGHS(job.balance)}</strong> still owed on this job.
       </p>
+      <ShelfItems job={job} />
       <MethodPicker label="Paid by" value={method?.id ?? null} onChange={(m) => { setPicked(m); setError(null); }} />
       <Field label="Amount (GH₵)" hint="Less than the balance? Take the rest in another payment.">
-        <input className="input" inputMode="decimal" value={amountText} onChange={(e) => { setAmountText(e.target.value); setError(null); }} autoComplete="off" aria-label="Amount" />
+        <input className="input" inputMode="decimal" value={amountText} onChange={(e) => { setAmountText(e.target.value); setTyped(true); setError(null); }} autoComplete="off" aria-label="Amount" />
       </Field>
       {method?.requiresReference || (method && !method.inDrawer) ? (
         <Field label={`${method.name} reference${method.requiresReference ? '' : ' (optional)'}`}>
@@ -107,9 +192,25 @@ export function PayPanel({ job, open, onClose }: { job: JobDetail; open: boolean
         </Field>
       ) : null}
       <FormError message={error ?? (save.isError ? errorMessage(save.error) : null)} />
-      <button type="button" className="btn btn-primary" disabled={save.isPending} onClick={submit}>
-        {save.isPending ? 'Saving…' : 'Save payment'}
-      </button>
+      {canDispatch && (
+        <button type="button" className="btn btn-primary" disabled={save.isPending} onClick={() => submit('dispatch')}>
+          {save.isPending ? 'Saving…' : 'Pay and dispatch'}
+        </button>
+      )}
+      {running && (
+        <button type="button" className={`btn ${canDispatch ? '' : 'btn-primary'}`} disabled={save.isPending} onClick={() => submit('wait')}>
+          {save.isPending ? 'Saving…' : 'Pay and wait for dispatch'}
+        </button>
+      )}
+      {running ? (
+        <button type="button" className="tap text-center text-sm text-blue-d" disabled={save.isPending} onClick={() => submit(null)}>
+          Save the payment only, the wash carries on
+        </button>
+      ) : (
+        <button type="button" className={`btn ${canDispatch ? '' : 'btn-primary'}`} disabled={save.isPending} onClick={() => submit(null)}>
+          {save.isPending ? 'Saving…' : 'Save payment'}
+        </button>
+      )}
     </Panel>
   );
 }

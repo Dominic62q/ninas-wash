@@ -84,7 +84,7 @@ export function NewJob() {
   const [picked, setPicked] = useState<Map<number, number[]>>(new Map());
   /** serviceId -> how many. Missing means one. */
   const [quantities, setQuantities] = useState<Map<number, number>>(new Map());
-  const [startNow, setStartNow] = useState(false);
+  const [startNow, setStartNow] = useState(true);
   const [busyNote, setBusyNote] = useState('');
   const [plateSheet, setPlateSheet] = useState(false);
   const sheetInput = useRef<HTMLInputElement>(null);
@@ -488,7 +488,7 @@ export function NewJob() {
 
       {/* Phone: the start-now tick. */}
       <section aria-label="Start washing" className="flex flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-card lg:hidden">
-        <Check label="Start washing now" checked={startNow} onChange={setStartNow} hint="Leave off to book the car as pending" />
+        <Check label="Start washing now" checked={startNow} onChange={setStartNow} hint="The usual way. Leave off to book the car as pending" />
       </section>
 
       <section aria-label="Price" className="flex flex-col gap-3 border border-line bg-surface p-4 max-lg:rounded-[14px] max-lg:border-0 max-lg:shadow-card lg:gap-4 lg:p-5">

@@ -416,8 +416,14 @@ export function JobDetail() {
               Start wash
             </button>
           )}
+          {/* Quick way: take the money and finish in one go. The step by step way (Mark complete, pay, dispatch) stays beside it. */}
+          {job.status === 'in_progress' && canPay && (
+            <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" onClick={() => setDialog({ kind: 'pay' })}>
+              Pay · {formatGHS(job.balance)}
+            </button>
+          )}
           {job.status === 'in_progress' && (
-            <button type="button" className="btn btn-primary col-span-2 max-lg:hidden sm:flex-1" onClick={() => steps.ask('complete', job.id, label)}>
+            <button type="button" className={`btn col-span-2 max-lg:hidden sm:flex-1 ${canPay ? '' : 'btn-primary'}`} onClick={() => steps.ask('complete', job.id, label)}>
               Mark complete
             </button>
           )}
@@ -667,7 +673,16 @@ export function JobDetail() {
       </div>
 
       {/* Phone: the next step sits at the bottom, where a thumb reaches. Steps that cannot be undone are slid to confirm. */}
-      {slide ? (
+      {open && job.status === 'in_progress' && canPay ? (
+        <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-auto flex gap-3 rounded-t-[18px] bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(7,31,71,0.14)] lg:hidden">
+          <button type="button" className="btn btn-primary h-[54px] flex-1 rounded-xl text-base" onClick={() => setDialog({ kind: 'pay' })}>
+            Pay · {formatGHS(job.balance)}
+          </button>
+          <button type="button" className="btn h-[54px] rounded-xl px-4" onClick={() => steps.ask('complete', job.id, label)}>
+            Finished
+          </button>
+        </div>
+      ) : slide ? (
         <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-auto flex rounded-t-[18px] bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(7,31,71,0.14)] lg:hidden">
           <SlideToConfirm label={slide.label} busy={steps.busy} disabled={slide.disabled} onConfirm={() => steps.now(slide.step, job.id, label)} />
         </div>
@@ -686,7 +701,7 @@ export function JobDetail() {
       <AddServicePanel key={`add-${job.lines.length}-${dialog?.kind === 'add' ? dialog.of : ''}`} job={job} kind={dialog?.kind === 'add' ? dialog.of : 'service'} open={dialog?.kind === 'add'} onClose={close} />
       <DiscountPanel key={`discount-${job.discount}`} job={job} open={dialog?.kind === 'discount'} onClose={close} />
       <VoidPanel job={job} open={dialog?.kind === 'void'} onClose={close} />
-      <PayPanel key={`pay-${job.paid}-${job.total}`} job={job} open={payingNow} onClose={close} />
+      <PayPanel key={`pay-${job.paid}`} job={job} open={payingNow} onClose={close} />
       <VoidPaymentPanel key={`voidpay-${dialog?.kind === 'voidPayment' ? dialog.paymentId : 'none'}`} job={job} payment={voidingPayment} onClose={close} />
       <DispatchPanel job={job} open={dialog?.kind === 'dispatch'} onClose={close} />
       {steps.dialog}

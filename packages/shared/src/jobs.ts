@@ -113,6 +113,11 @@ export const paymentInput = z.object({
   reference: z.string().trim().max(40).nullish().transform((v) => v || null),
   /** Made once per payment form. A double-tap or a retry carries the same key, so it saves once. */
   idemKey: z.string().trim().min(8).max(64),
+  /**
+   * Skip the steps. "wait" finishes the wash with this payment and leaves the car waiting to be handed over.
+   * "dispatch" does that and hands the car over too, so it needs the whole balance paid. Empty is a plain payment.
+   */
+  finish: z.enum(['wait', 'dispatch']).nullish().transform((v) => v ?? null),
 });
 export type PaymentInput = z.infer<typeof paymentInput>;
 
